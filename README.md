@@ -36,17 +36,16 @@ If you're curious about how we use cmux to juggle multiple AI coding agents at o
 
 **Detail View**
 - Read terminal screen content from any workspace
-- Auto-refresh every 3 seconds (toggle with `a`) — no more manual refreshing
+- Auto-refresh every 3 seconds (toggle with `Ctrl+A`) — no more manual refreshing
 - See what's currently running in real-time
+- **Direct typing** — just start typing to compose a command, press Enter to send. No mode switching needed.
+- Send `Ctrl+C` directly to workspaces to interrupt running processes
+- Tab key support for shell autocomplete
 
-**Quick Macros** (`m` from detail view)
+**Quick Macros** (`Ctrl+T` from detail view)
 - One-keystroke actions for common agentic tool commands
 - Pre-configured: approve (y), deny (n), Ctrl+C, resume, /status, /clear, /compact, /help
 - Works with Claude Code, OpenCode, Aider, and other tools that use similar commands
-
-**Input Mode**
-- Type and send commands to any workspace remotely
-- Full keyboard support from SSH terminal
 
 **Session Tree** (`t` from dashboard)
 - View the full cmux session tree (`cmux tree --all`)
@@ -182,17 +181,22 @@ To allow SSH sessions to control cmux remotely, you must enable password-protect
 | `r` | Refresh workspace list |
 | `q` | Quit application |
 
-### Detail View
+### Detail View (Direct Typing)
+
+The detail view uses direct typing — just start typing and your keystrokes go to the input buffer. No mode switching needed. All commands use `Ctrl+` combos to stay out of your way.
 
 | Key | Action |
 |-----|--------|
-| `r` | Refresh screen content |
-| `a` | Toggle auto-refresh (every 3s) |
-| `i` | Enter input mode (send commands) |
-| `m` | Open quick macros |
-| `f` | Focus this workspace on Mac |
-| `Enter` | Send Enter key to workspace |
-| `Esc` | Return to dashboard |
+| Type text | Compose a command in the input buffer |
+| `Enter` | Send buffer contents to workspace (or just Enter if empty) |
+| `Backspace` | Delete last character from buffer |
+| `Tab` | Send Tab to workspace (shell autocomplete) |
+| `Ctrl+R` | Refresh screen content |
+| `Ctrl+A` | Toggle auto-refresh (every 3s) |
+| `Ctrl+T` | Open quick macros menu |
+| `Ctrl+F` | Focus this workspace on Mac |
+| `Ctrl+C` | Send Ctrl+C to workspace (interrupt) |
+| `Esc` | Clear input buffer, or return to dashboard if empty |
 
 ### Quick Macros
 
@@ -207,14 +211,6 @@ To allow SSH sessions to control cmux remotely, you must enable password-protect
 | `7` | Send `/compact` + Enter |
 | `8` | Send `/help` + Enter |
 | `Esc` | Back to detail view |
-
-### Input Mode
-
-| Key | Action |
-|-----|--------|
-| Type text | Enter command |
-| `Enter` | Send command to workspace |
-| `Esc` | Cancel and return to detail |
 
 ### Session Tree
 

@@ -30,7 +30,7 @@ interface Workspace {
   statusRaw: string;
 }
 
-type View = "dashboard" | "detail" | "input" | "macros" | "tree";
+type View = "dashboard" | "detail" | "macros" | "tree";
 
 interface Macro {
   key: string;       // display key
@@ -138,7 +138,7 @@ async function main() {
   }
 
   const renderer = await createCliRenderer({
-    exitOnCtrlC: true,
+    exitOnCtrlC: false,  // We handle Ctrl+C ourselves (send to workspace in detail view)
     targetFps: 10,
     useMouse: false,
   });
@@ -285,46 +285,18 @@ async function main() {
   });
   detailGroup.add(detailFooter);
 
+  // Inline input prompt (lives inside detail view, row above footer)
+  const detailInputLine = new TextRenderable(renderer, {
+    id: "detail-input",
+    position: "absolute",
+    left: 1,
+    top: H - 3,
+    content: "",
+    zIndex: 15,
+  });
+  detailGroup.add(detailInputLine);
+
   renderer.root.add(detailGroup);
-
-  // === INPUT VIEW ===
-  const inputGroup = new BoxRenderable(renderer, {
-    id: "input-group",
-    zIndex: 1,
-    visible: false,
-  });
-
-  const inputHeader = new TextRenderable(renderer, {
-    id: "input-header",
-    position: "absolute",
-    left: 1,
-    top: 0,
-    content: "",
-    zIndex: 10,
-  });
-  inputGroup.add(inputHeader);
-
-  const inputPrompt = new TextRenderable(renderer, {
-    id: "input-prompt",
-    position: "absolute",
-    left: 1,
-    top: 2,
-    content: "",
-    zIndex: 10,
-  });
-  inputGroup.add(inputPrompt);
-
-  const inputFooter = new TextRenderable(renderer, {
-    id: "input-footer",
-    position: "absolute",
-    left: 1,
-    top: H - 1,
-    content: "",
-    zIndex: 10,
-  });
-  inputGroup.add(inputFooter);
-
-  renderer.root.add(inputGroup);
 
   // === MACROS VIEW ===
   const macrosGroup = new BoxRenderable(renderer, {
@@ -429,7 +401,6 @@ async function main() {
     state.view = v;
     dashGroup.visible = v === "dashboard";
     detailGroup.visible = v === "detail";
-    inputGroup.visible = v === "input";
     macrosGroup.visible = v === "macros";
     treeGroup.visible = v === "tree";
   }
@@ -498,26 +469,24 @@ async function main() {
     const autoIcon = state.detailAutoRefresh ? green("⟳") : dim("⟳");
     detailHeader.content = t`${bold(accent(ws.name))} ${statusFn(`[${ws.status.replace("_", " ")}]`)} ${dim(ws.ref)} ${autoIcon}`;
 
-    const visibleLines = Math.min(H - 4, MAX_SCREEN_LINES);
+    // Leave room: header(1) + gap(1) + screen + gap(1) + input(1) + status(1) + footer(1)
+    const visibleLines = Math.min(H - 6, MAX_SCREEN_LINES);
     for (let i = 0; i < MAX_SCREEN_LINES; i++) {
       if (i >= visibleLines || i >= state.screenLines.length) {
         screenRows[i]!.content = "";
         continue;
       }
-      // Truncate to terminal width
       screenRows[i]!.content = state.screenLines[i]!.substring(0, W - 2);
     }
 
-    detailFooter.content = t`${dim("esc")} back  ${dim("r")} refresh  ${dim("a")} auto  ${dim("i")} input  ${dim("m")} macros  ${dim("f")} focus  ${dim("⏎")} Enter`;
-  }
+    // Inline input prompt — always visible, shows what you're typing
+    if (state.inputBuffer.length > 0) {
+      detailInputLine.content = t`${accent("❯")} ${state.inputBuffer}${fg("#4C8DFF")("█")}`;
+    } else {
+      detailInputLine.content = t`${dim("❯ type a command...")}`;
+    }
 
-  function renderInput() {
-    const ws = state.filteredWorkspaces[state.cursor];
-    if (!ws) return;
-
-    inputHeader.content = t`${bold(accent("Send Command"))} → ${ws.name}`;
-    inputPrompt.content = t`${accent("❯")} ${state.inputBuffer}${fg("#4C8DFF")("█")}`;
-    inputFooter.content = t`${dim("⏎")} send  ${dim("esc")} cancel`;
+    detailFooter.content = t`${dim("esc")} back  ${dim("^R")} refresh  ${dim("^A")} auto  ${dim("^T")} macros  ${dim("^F")} focus  ${dim("^C")} interrupt  ${dim("⏎")} send`;
   }
 
   function renderMacros() {
@@ -562,6 +531,12 @@ async function main() {
       errorText.content = "";
 
       if (state.view === "dashboard") {
+        // Ctrl+C on dashboard quits
+        if (key.ctrl && key.name === "c") {
+          renderer.stop();
+          process.exit(0);
+        }
+
         switch (key.name) {
           case "q":
             renderer.stop();
@@ -627,71 +602,72 @@ async function main() {
         const ws = state.filteredWorkspaces[state.cursor];
         if (!ws) return;
 
-        switch (key.name) {
-          case "escape":
+        // Ctrl+ commands (check ctrl flag or raw sequence)
+        const isCtrl = key.ctrl === true;
+
+        if (key.name === "escape") {
+          if (state.inputBuffer.length > 0) {
+            // Esc with text in buffer → clear buffer
+            state.inputBuffer = "";
+            renderDetail();
+          } else {
+            // Esc with empty buffer → back to dashboard
             showView("dashboard");
             renderDashboard();
-            break;
-
-          case "r":
-            state.screenLines = await fetchScreen(ws.ref);
-            state.lastDetailRefresh = Date.now();
-            renderDetail();
-            break;
-
-          case "a":
-            state.detailAutoRefresh = !state.detailAutoRefresh;
-            errorText.content = t`${state.detailAutoRefresh ? green("⟳ Auto-refresh ON (3s)") : dim("⟳ Auto-refresh OFF")}`;
-            renderDetail();
-            break;
-
-          case "i":
-            state.inputBuffer = "";
-            showView("input");
-            renderInput();
-            break;
-
-          case "m":
-            showView("macros");
-            renderMacros();
-            break;
-
-          case "f":
-            await cmux("select-workspace", "--workspace", ws.ref);
-            errorText.content = t`${green("Focused")} ${ws.name}`;
-            break;
-
-          case "return":
-            await cmux("send-key", "--workspace", ws.ref, "Enter");
-            await Bun.sleep(300);
-            state.screenLines = await fetchScreen(ws.ref);
-            state.lastDetailRefresh = Date.now();
-            renderDetail();
-            break;
-        }
-
-      } else if (state.view === "input") {
-        if (key.name === "escape") {
-          showView("detail");
+          }
+        } else if (isCtrl && key.name === "r") {
+          // Ctrl+R → refresh
+          state.screenLines = await fetchScreen(ws.ref);
+          state.lastDetailRefresh = Date.now();
+          renderDetail();
+        } else if (isCtrl && key.name === "a") {
+          // Ctrl+A → toggle auto-refresh
+          state.detailAutoRefresh = !state.detailAutoRefresh;
+          errorText.content = t`${state.detailAutoRefresh ? green("⟳ Auto-refresh ON (3s)") : dim("⟳ Auto-refresh OFF")}`;
+          renderDetail();
+        } else if (isCtrl && key.name === "t") {
+          // Ctrl+T → macros menu
+          showView("macros");
+          renderMacros();
+        } else if (isCtrl && key.name === "f") {
+          // Ctrl+F → focus workspace on Mac
+          await cmux("select-workspace", "--workspace", ws.ref);
+          errorText.content = t`${green("Focused")} ${ws.name}`;
+        } else if (isCtrl && key.name === "c") {
+          // Ctrl+C → send Ctrl+C to workspace
+          await cmux("send-key", "--workspace", ws.ref, "Ctrl+C");
+          errorText.content = t`${yellow("Sent Ctrl+C")} → ${ws.name}`;
+          await Bun.sleep(300);
+          state.screenLines = await fetchScreen(ws.ref);
+          state.lastDetailRefresh = Date.now();
           renderDetail();
         } else if (key.name === "return") {
-          const ws = state.filteredWorkspaces[state.cursor];
-          if (state.inputBuffer.trim() && ws) {
+          // Enter → send buffer contents (or just Enter if empty)
+          if (state.inputBuffer.trim()) {
             await cmux("send", "--workspace", ws.ref, state.inputBuffer);
             await cmux("send-key", "--workspace", ws.ref, "Enter");
-            await Bun.sleep(300);
-            state.screenLines = await fetchScreen(ws.ref);
-            state.lastDetailRefresh = Date.now();
+            state.inputBuffer = "";
+          } else {
+            await cmux("send-key", "--workspace", ws.ref, "Enter");
           }
-          state.inputBuffer = "";
-          showView("detail");
+          await Bun.sleep(300);
+          state.screenLines = await fetchScreen(ws.ref);
+          state.lastDetailRefresh = Date.now();
           renderDetail();
         } else if (key.name === "backspace" || key.name === "delete") {
           state.inputBuffer = state.inputBuffer.slice(0, -1);
-          renderInput();
+          renderDetail();
+        } else if (key.name === "tab") {
+          // Tab → send tab to workspace (useful for autocomplete)
+          await cmux("send-key", "--workspace", ws.ref, "Tab");
+          await Bun.sleep(200);
+          state.screenLines = await fetchScreen(ws.ref);
+          state.lastDetailRefresh = Date.now();
+          renderDetail();
         } else if (key.sequence && key.sequence.length === 1 && key.sequence.charCodeAt(0) >= 32) {
+          // Printable character → add to input buffer
           state.inputBuffer += key.sequence;
-          renderInput();
+          renderDetail();
         }
 
       } else if (state.view === "macros") {
