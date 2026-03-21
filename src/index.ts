@@ -90,8 +90,16 @@ async function fetchWorkspaces(): Promise<Workspace[]> {
 }
 
 async function fetchScreen(ref: string): Promise<string[]> {
-  const raw = await cmux("read-screen", "--workspace", ref);
-  return raw.split("\n").slice(0, 200);
+  try {
+    const raw = await cmux("read-screen", "--workspace", ref);
+    return raw.split("\n").slice(0, 200);
+  } catch (e: any) {
+    const msg = e?.message || String(e);
+    if (msg.includes("Terminal surface not found")) {
+      return ["", " ⏳ Terminal surface not ready — workspace may still be loading.", "", " Press 'r' to retry."];
+    }
+    return ["", ` ⚠ Error reading screen: ${msg}`, "", " Press 'r' to retry."];
+  }
 }
 
 // ─── Main ───────────────────────────────────────────────────────
