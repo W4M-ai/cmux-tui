@@ -311,15 +311,15 @@ bun install
 ### Run (Development Mode)
 
 ```bash
-bun --hot ./index.ts
+bun run dev
 ```
 
 This enables hot reloading for faster development.
 
-### Build
+### Run (Production)
 
 ```bash
-bun build ./index.ts
+bun run start
 ```
 
 ### Test
@@ -374,6 +374,12 @@ MIT License – see [LICENSE](LICENSE) file for details.
 ---
 
 ## Acknowledgments
+
+This project wouldn't exist without:
+
+- **[cmux](https://github.com/manaflow-ai/cmux)** by Manaflow AI — the terminal multiplexer that makes this all possible. cmux's powerful CLI and socket API are what enable remote workspace control. Huge thanks to the cmux team for building such a solid foundation.
+- **[OpenTUI](https://github.com/anomalyco/opentui)** by Anomaly — the Zig-native terminal UI framework that powers the dashboard. OpenTUI's performance and component model made it possible to build a responsive TUI that works great even over SSH on mobile connections. Built by the same team behind [OpenCode](https://github.com/anomalyco/opencode).
+- **[Bun](https://bun.sh)** — for making TypeScript development fast and painless.
 
 Built for Claude Code users who manage projects from anywhere.
 
