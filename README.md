@@ -1,8 +1,8 @@
 # cmux-tui
 
-A terminal UI for remotely controlling [cmux](https://cmux.com) workspaces over SSH, designed for managing Claude Code sessions from an iPad or iPhone.
+A terminal UI for remotely controlling [cmux](https://cmux.com) workspaces over SSH, designed for managing your agentic coding sessions from an iPad or iPhone.
 
-Manage your development environments from anywhere with a lightweight, responsive TUI built with [OpenTUI](https://opentui.dev) and [Bun](https://bun.com).
+Monitor and control your running terminal sessions — whether they're [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [OpenCode](https://github.com/anomalyco/opencode), [Codex](https://github.com/openai/codex), [Aider](https://aider.chat), [Droid](https://github.com/nichochar/droid), or any other agentic tool running in cmux — from anywhere with a lightweight, responsive TUI built with [OpenTUI](https://github.com/anomalyco/opentui) and [Bun](https://bun.sh).
 
 ---
 
@@ -381,6 +381,6 @@ This project wouldn't exist without:
 - **[OpenTUI](https://github.com/anomalyco/opentui)** by Anomaly — the Zig-native terminal UI framework that powers the dashboard. OpenTUI's performance and component model made it possible to build a responsive TUI that works great even over SSH on mobile connections. Built by the same team behind [OpenCode](https://github.com/anomalyco/opencode).
 - **[Bun](https://bun.sh)** — for making TypeScript development fast and painless.
 
-Built for Claude Code users who manage projects from anywhere.
+Built for developers who run agentic coding tools and want to keep projects moving from anywhere.
 
 Have questions? Open an issue on [GitHub](https://github.com/W4M-ai/cmux-tui/issues).
