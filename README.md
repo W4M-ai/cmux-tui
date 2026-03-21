@@ -340,29 +340,7 @@ bun test
 
 ## Contributing
 
-We welcome contributions! Whether it's bug reports, feature suggestions, or code improvements:
-
-1. **Fork** the repository
-2. **Create a feature branch:** `git checkout -b feature/amazing-feature`
-3. **Commit your changes:** `git commit -m 'Add amazing feature'`
-4. **Push to the branch:** `git push origin feature/amazing-feature`
-5. **Open a Pull Request**
-
-### Code Style
-
-- Use TypeScript for type safety
-- Follow the Bun conventions (prefer Bun APIs over Node.js)
-- Keep components focused and testable
-- Add tests for new features
-
-### Reporting Bugs
-
-Please include:
-- Your macOS version
-- Your cmux version
-- Terminal app and iOS version (if applicable)
-- Steps to reproduce
-- Expected vs. actual behavior
+Feel free to fork this and make it your own! We built this for our personal workflow and are sharing it as-is. We unfortunately don't have the bandwidth to review PRs or provide support, but you're welcome to take it in whatever direction works for you.
 
 ---
 
