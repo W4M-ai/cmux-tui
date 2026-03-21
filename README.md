@@ -6,6 +6,14 @@ Monitor and control your running terminal sessions — whether they're [Claude C
 
 ---
 
+## Why We Built This
+
+We built cmux-tui for ourselves. We run a bunch of agentic coding sessions in cmux throughout the day, and we wanted a way to check in on them from our iPad or iPhone without having to walk back to the Mac. What started as a quick hack turned into something we actually use every day — so we figured we'd share it in case it helps others too.
+
+If you're curious about how we use cmux to juggle multiple AI coding agents at once, check out [this LinkedIn post](https://www.linkedin.com/posts/fvongraf_cmux-the-terminal-built-for-multitasking-activity-7440850191001264128-yfFx) where we talk about the workflow.
+
+---
+
 ## Features
 
 **Dashboard View**
@@ -381,6 +389,6 @@ This project wouldn't exist without:
 - **[OpenTUI](https://github.com/anomalyco/opentui)** by Anomaly — the Zig-native terminal UI framework that powers the dashboard. OpenTUI's performance and component model made it possible to build a responsive TUI that works great even over SSH on mobile connections. Built by the same team behind [OpenCode](https://github.com/anomalyco/opencode).
 - **[Bun](https://bun.sh)** — for making TypeScript development fast and painless.
 
-Built for developers who run agentic coding tools and want to keep projects moving from anywhere.
+Built for developers who run agentic coding tools and want to keep projects moving from anywhere — even from the couch with an iPad. 🛋️
 
-Have questions? Open an issue on [GitHub](https://github.com/W4M-ai/cmux-tui/issues).
+We'd love to hear how you use it! Open an issue on [GitHub](https://github.com/W4M-ai/cmux-tui/issues) with questions, ideas, or just to say hi.
