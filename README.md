@@ -14,6 +14,16 @@ If you're curious about how we use cmux to juggle multiple AI coding agents at o
 
 ---
 
+## Screenshots
+
+| Dashboard | Workspace Detail |
+|:---------:|:----------------:|
+| ![Dashboard](docs/images/dashboard.png) | ![Detail View](docs/images/detail.png) |
+
+*Running on iPad over SSH — monitoring 12 workspaces from the couch.*
+
+---
+
 ## Features
 
 **Dashboard View**
