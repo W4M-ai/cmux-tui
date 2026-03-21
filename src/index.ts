@@ -30,17 +30,45 @@ interface Workspace {
   statusRaw: string;
 }
 
-type View = "dashboard" | "detail" | "input";
+type View = "dashboard" | "detail" | "input" | "macros" | "tree";
+
+interface Macro {
+  key: string;       // display key
+  label: string;     // display label
+  command: string;   // text to send
+  sendEnter: boolean;
+}
+
+// Common macros for agentic coding tools
+const MACROS: Macro[] = [
+  { key: "1", label: "y (approve)", command: "y", sendEnter: true },
+  { key: "2", label: "n (deny)", command: "n", sendEnter: true },
+  { key: "3", label: "Ctrl+C", command: "", sendEnter: false },  // special: send key
+  { key: "4", label: "resume", command: "resume", sendEnter: true },
+  { key: "5", label: "status", command: "/status", sendEnter: true },
+  { key: "6", label: "clear", command: "/clear", sendEnter: true },
+  { key: "7", label: "compact", command: "/compact", sendEnter: true },
+  { key: "8", label: "help", command: "/help", sendEnter: true },
+];
+
+type Filter = "all" | "running" | "needs_input" | "idle";
 
 interface State {
   view: View;
   workspaces: Workspace[];
+  filteredWorkspaces: Workspace[];
+  filter: Filter;
   cursor: number;
   screenLines: string[];
   inputBuffer: string;
   error: string;
   lastRefresh: number;
+  lastDetailRefresh: number;
   refreshing: boolean;
+  detailAutoRefresh: boolean;
+  notifications: boolean;
+  previousStatuses: Map<string, string>;
+  notificationQueue: string[];
 }
 
 // ─── cmux CLI wrapper ───────────────────────────────────────────
@@ -66,8 +94,8 @@ async function fetchWorkspaces(): Promise<Workspace[]> {
     const m = line.match(/^([*\s])\s*(workspace:\d+)\s+(.+?)(?:\s+\[selected\])?$/);
     if (!m) continue;
     workspaces.push({
-      ref: m[2],
-      name: m[3].trim(),
+      ref: m[2]!,
+      name: m[3]!.trim(),
       isActive: m[1] === "*" || line.includes("[selected]"),
       status: "idle",
       statusRaw: "",
@@ -121,13 +149,51 @@ async function main() {
   const state: State = {
     view: "dashboard",
     workspaces: [],
+    filteredWorkspaces: [],
+    filter: "all",
     cursor: 0,
     screenLines: [],
     inputBuffer: "",
     error: "",
     lastRefresh: 0,
+    lastDetailRefresh: 0,
     refreshing: false,
+    detailAutoRefresh: true,
+    notifications: true,
+    previousStatuses: new Map(),
+    notificationQueue: [],
   };
+
+  // Helper to apply current filter
+  function applyFilter() {
+    if (state.filter === "all") {
+      state.filteredWorkspaces = state.workspaces;
+    } else {
+      state.filteredWorkspaces = state.workspaces.filter(w => w.status === state.filter);
+    }
+    if (state.cursor >= state.filteredWorkspaces.length) {
+      state.cursor = Math.max(0, state.filteredWorkspaces.length - 1);
+    }
+  }
+
+  // Check for status changes and queue notifications
+  function checkNotifications(newWorkspaces: Workspace[]) {
+    if (!state.notifications || state.previousStatuses.size === 0) {
+      // First load — just record statuses, don't notify
+      for (const ws of newWorkspaces) {
+        state.previousStatuses.set(ws.ref, ws.status);
+      }
+      return;
+    }
+    for (const ws of newWorkspaces) {
+      const prev = state.previousStatuses.get(ws.ref);
+      if (prev && prev !== ws.status) {
+        const emoji = ws.status === "needs_input" ? "⏳" : ws.status === "running" ? "⚡" : "○";
+        state.notificationQueue.push(`${emoji} ${ws.name}: ${prev.replace("_", " ")} → ${ws.status.replace("_", " ")}`);
+      }
+      state.previousStatuses.set(ws.ref, ws.status);
+    }
+  }
 
   // ─── UI Elements ────────────────────────────────────────────
   // We create a main group per view and toggle visibility
@@ -260,6 +326,93 @@ async function main() {
 
   renderer.root.add(inputGroup);
 
+  // === MACROS VIEW ===
+  const macrosGroup = new BoxRenderable(renderer, {
+    id: "macros-group",
+    zIndex: 1,
+    visible: false,
+  });
+
+  const macrosHeader = new TextRenderable(renderer, {
+    id: "macros-header",
+    position: "absolute",
+    left: 1,
+    top: 0,
+    content: "",
+    zIndex: 10,
+  });
+  macrosGroup.add(macrosHeader);
+
+  const macroRows: TextRenderable[] = [];
+  for (let i = 0; i < MACROS.length; i++) {
+    const row = new TextRenderable(renderer, {
+      id: `macro-${i}`,
+      position: "absolute",
+      left: 3,
+      top: 2 + i,
+      content: "",
+      zIndex: 5,
+    });
+    macrosGroup.add(row);
+    macroRows.push(row);
+  }
+
+  const macrosFooter = new TextRenderable(renderer, {
+    id: "macros-footer",
+    position: "absolute",
+    left: 1,
+    top: H - 1,
+    content: "",
+    zIndex: 10,
+  });
+  macrosGroup.add(macrosFooter);
+
+  renderer.root.add(macrosGroup);
+
+  // === TREE VIEW ===
+  const treeGroup = new BoxRenderable(renderer, {
+    id: "tree-group",
+    zIndex: 1,
+    visible: false,
+  });
+
+  const treeHeader = new TextRenderable(renderer, {
+    id: "tree-header",
+    position: "absolute",
+    left: 1,
+    top: 0,
+    content: "",
+    zIndex: 10,
+  });
+  treeGroup.add(treeHeader);
+
+  const MAX_TREE_LINES = 60;
+  const treeRows: TextRenderable[] = [];
+  for (let i = 0; i < MAX_TREE_LINES; i++) {
+    const row = new TextRenderable(renderer, {
+      id: `tree-${i}`,
+      position: "absolute",
+      left: 1,
+      top: 2 + i,
+      content: "",
+      zIndex: 5,
+    });
+    treeGroup.add(row);
+    treeRows.push(row);
+  }
+
+  const treeFooter = new TextRenderable(renderer, {
+    id: "tree-footer",
+    position: "absolute",
+    left: 1,
+    top: H - 1,
+    content: "",
+    zIndex: 10,
+  });
+  treeGroup.add(treeFooter);
+
+  renderer.root.add(treeGroup);
+
   // === ERROR OVERLAY ===
   const errorText = new TextRenderable(renderer, {
     id: "error-text",
@@ -277,22 +430,26 @@ async function main() {
     dashGroup.visible = v === "dashboard";
     detailGroup.visible = v === "detail";
     inputGroup.visible = v === "input";
+    macrosGroup.visible = v === "macros";
+    treeGroup.visible = v === "tree";
   }
 
   // ─── Render functions ───────────────────────────────────────
   function renderDashboard() {
-    const ws = state.workspaces;
+    const ws = state.filteredWorkspaces;
     const refreshIcon = state.refreshing ? " ↻" : "";
+    const filterLabel = state.filter === "all" ? "" : ` [${state.filter.replace("_", " ")}]`;
+    const notifIcon = state.notifications ? " 🔔" : "";
 
-    dashHeader.content = t`${bold(accent("cmux Remote"))} ${dim(`(${ws.length} workspaces${refreshIcon})`)}`;
+    dashHeader.content = t`${bold(accent("cmux Remote"))} ${dim(`(${ws.length}/${state.workspaces.length} workspaces${refreshIcon}${filterLabel}${notifIcon})`)}`;
 
     for (let i = 0; i < MAX_SLOTS; i++) {
       if (i >= ws.length) {
-        dashRows[i].content = "";
+        dashRows[i]!.content = "";
         continue;
       }
 
-      const w = ws[i];
+      const w = ws[i]!;
       const selected = i === state.cursor;
       const pointer = selected ? "▸ " : "  ";
 
@@ -315,14 +472,20 @@ async function main() {
       const name = selected ? bold(white(w.name)) : w.name;
       const status = statusFn(`${statusIcon} ${w.status.replace("_", " ")}`);
 
-      dashRows[i].content = t`${selected ? accent(pointer) : dim(pointer)}${name} ${status}`;
+      dashRows[i]!.content = t`${selected ? accent(pointer) : dim(pointer)}${name} ${status}`;
     }
 
-    dashFooter.content = t`${dim("j/k")} select  ${dim("⏎")} open  ${dim("r")} refresh  ${dim("q")} quit`;
+    // Show notification queue if any
+    if (state.notificationQueue.length > 0) {
+      const note = state.notificationQueue.shift()!;
+      errorText.content = t`${yellow("▶")} ${note}`;
+    }
+
+    dashFooter.content = t`${dim("j/k")} select  ${dim("⏎")} open  ${dim("r")} refresh  ${dim("/")} filter  ${dim("n")} notify  ${dim("q")} quit`;
   }
 
   function renderDetail() {
-    const ws = state.workspaces[state.cursor];
+    const ws = state.filteredWorkspaces[state.cursor];
     if (!ws) return;
 
     let statusFn: (s: string) => any;
@@ -332,28 +495,64 @@ async function main() {
       default: statusFn = dim;
     }
 
-    detailHeader.content = t`${bold(accent(ws.name))} ${statusFn(`[${ws.status.replace("_", " ")}]`)} ${dim(ws.ref)}`;
+    const autoIcon = state.detailAutoRefresh ? green("⟳") : dim("⟳");
+    detailHeader.content = t`${bold(accent(ws.name))} ${statusFn(`[${ws.status.replace("_", " ")}]`)} ${dim(ws.ref)} ${autoIcon}`;
 
     const visibleLines = Math.min(H - 4, MAX_SCREEN_LINES);
     for (let i = 0; i < MAX_SCREEN_LINES; i++) {
       if (i >= visibleLines || i >= state.screenLines.length) {
-        screenRows[i].content = "";
+        screenRows[i]!.content = "";
         continue;
       }
       // Truncate to terminal width
-      screenRows[i].content = state.screenLines[i].substring(0, W - 2);
+      screenRows[i]!.content = state.screenLines[i]!.substring(0, W - 2);
     }
 
-    detailFooter.content = t`${dim("esc")} back  ${dim("r")} refresh  ${dim("i")} input  ${dim("f")} focus  ${dim("⏎")} send Enter`;
+    detailFooter.content = t`${dim("esc")} back  ${dim("r")} refresh  ${dim("a")} auto  ${dim("i")} input  ${dim("m")} macros  ${dim("f")} focus  ${dim("⏎")} Enter`;
   }
 
   function renderInput() {
-    const ws = state.workspaces[state.cursor];
+    const ws = state.filteredWorkspaces[state.cursor];
     if (!ws) return;
 
     inputHeader.content = t`${bold(accent("Send Command"))} → ${ws.name}`;
     inputPrompt.content = t`${accent("❯")} ${state.inputBuffer}${fg("#4C8DFF")("█")}`;
     inputFooter.content = t`${dim("⏎")} send  ${dim("esc")} cancel`;
+  }
+
+  function renderMacros() {
+    const ws = state.filteredWorkspaces[state.cursor];
+    if (!ws) return;
+
+    macrosHeader.content = t`${bold(accent("Quick Macros"))} → ${ws.name}`;
+
+    for (let i = 0; i < MACROS.length; i++) {
+      const m = MACROS[i]!;
+      macroRows[i]!.content = t`${accent(m.key)}  ${white(m.label)}${dim(m.command ? ` → "${m.command}"` : " → Ctrl+C")}`;
+    }
+
+    macrosFooter.content = t`${dim("1-8")} send macro  ${dim("esc")} back`;
+  }
+
+  async function renderTree() {
+    treeHeader.content = t`${bold(accent("Session Tree"))} ${dim("(cmux tree --all)")}`;
+
+    try {
+      const raw = await cmux("tree", "--all");
+      const lines = raw.split("\n");
+      for (let i = 0; i < MAX_TREE_LINES; i++) {
+        if (i >= lines.length) {
+          treeRows[i]!.content = "";
+          continue;
+        }
+        treeRows[i]!.content = lines[i]!.substring(0, W - 2);
+      }
+    } catch (e: any) {
+      treeRows[0]!.content = t`${red("Error:")} ${e?.message || String(e)}`;
+      for (let i = 1; i < MAX_TREE_LINES; i++) treeRows[i]!.content = "";
+    }
+
+    treeFooter.content = t`${dim("esc")} back  ${dim("r")} refresh`;
   }
 
   // ─── Keyboard handler ───────────────────────────────────────
@@ -370,7 +569,7 @@ async function main() {
 
           case "j":
           case "down":
-            state.cursor = Math.min(state.cursor + 1, state.workspaces.length - 1);
+            state.cursor = Math.min(state.cursor + 1, state.filteredWorkspaces.length - 1);
             renderDashboard();
             break;
 
@@ -381,9 +580,10 @@ async function main() {
             break;
 
           case "return":
-            if (state.workspaces.length > 0) {
+            if (state.filteredWorkspaces.length > 0) {
               showView("detail");
-              state.screenLines = await fetchScreen(state.workspaces[state.cursor].ref);
+              state.lastDetailRefresh = Date.now();
+              state.screenLines = await fetchScreen(state.filteredWorkspaces[state.cursor]!.ref);
               renderDetail();
             }
             break;
@@ -393,15 +593,40 @@ async function main() {
               state.refreshing = true;
               renderDashboard();
               state.workspaces = await fetchWorkspaces();
+              checkNotifications(state.workspaces);
               state.lastRefresh = Date.now();
               state.refreshing = false;
-              if (state.cursor >= state.workspaces.length) state.cursor = 0;
+              applyFilter();
               renderDashboard();
             }
             break;
+
+          case "t":
+            showView("tree");
+            await renderTree();
+            break;
+
+          case "n":
+            state.notifications = !state.notifications;
+            errorText.content = t`${state.notifications ? green("🔔 Notifications ON") : dim("🔕 Notifications OFF")}`;
+            renderDashboard();
+            break;
+        }
+
+        // Filter with / key (detected by sequence since "name" may vary)
+        if (key.sequence === "/") {
+          const filters: Filter[] = ["all", "running", "needs_input", "idle"];
+          const idx = filters.indexOf(state.filter);
+          state.filter = filters[(idx + 1) % filters.length]!;
+          applyFilter();
+          errorText.content = t`${accent("Filter:")} ${state.filter === "all" ? "showing all" : state.filter.replace("_", " ")}`;
+          renderDashboard();
         }
 
       } else if (state.view === "detail") {
+        const ws = state.filteredWorkspaces[state.cursor];
+        if (!ws) return;
+
         switch (key.name) {
           case "escape":
             showView("dashboard");
@@ -409,7 +634,14 @@ async function main() {
             break;
 
           case "r":
-            state.screenLines = await fetchScreen(state.workspaces[state.cursor].ref);
+            state.screenLines = await fetchScreen(ws.ref);
+            state.lastDetailRefresh = Date.now();
+            renderDetail();
+            break;
+
+          case "a":
+            state.detailAutoRefresh = !state.detailAutoRefresh;
+            errorText.content = t`${state.detailAutoRefresh ? green("⟳ Auto-refresh ON (3s)") : dim("⟳ Auto-refresh OFF")}`;
             renderDetail();
             break;
 
@@ -419,16 +651,21 @@ async function main() {
             renderInput();
             break;
 
+          case "m":
+            showView("macros");
+            renderMacros();
+            break;
+
           case "f":
-            await cmux("select-workspace", "--workspace", state.workspaces[state.cursor].ref);
-            errorText.content = t`${green("Focused")} ${state.workspaces[state.cursor].name}`;
+            await cmux("select-workspace", "--workspace", ws.ref);
+            errorText.content = t`${green("Focused")} ${ws.name}`;
             break;
 
           case "return":
-            // Quick send Enter to workspace
-            await cmux("send-key", "--workspace", state.workspaces[state.cursor].ref, "Enter");
+            await cmux("send-key", "--workspace", ws.ref, "Enter");
             await Bun.sleep(300);
-            state.screenLines = await fetchScreen(state.workspaces[state.cursor].ref);
+            state.screenLines = await fetchScreen(ws.ref);
+            state.lastDetailRefresh = Date.now();
             renderDetail();
             break;
         }
@@ -438,12 +675,13 @@ async function main() {
           showView("detail");
           renderDetail();
         } else if (key.name === "return") {
-          if (state.inputBuffer.trim()) {
-            const ref = state.workspaces[state.cursor].ref;
-            await cmux("send", "--workspace", ref, state.inputBuffer);
-            await cmux("send-key", "--workspace", ref, "Enter");
+          const ws = state.filteredWorkspaces[state.cursor];
+          if (state.inputBuffer.trim() && ws) {
+            await cmux("send", "--workspace", ws.ref, state.inputBuffer);
+            await cmux("send-key", "--workspace", ws.ref, "Enter");
             await Bun.sleep(300);
-            state.screenLines = await fetchScreen(ref);
+            state.screenLines = await fetchScreen(ws.ref);
+            state.lastDetailRefresh = Date.now();
           }
           state.inputBuffer = "";
           showView("detail");
@@ -452,9 +690,42 @@ async function main() {
           state.inputBuffer = state.inputBuffer.slice(0, -1);
           renderInput();
         } else if (key.sequence && key.sequence.length === 1 && key.sequence.charCodeAt(0) >= 32) {
-          // Printable character
           state.inputBuffer += key.sequence;
           renderInput();
+        }
+
+      } else if (state.view === "macros") {
+        if (key.name === "escape") {
+          showView("detail");
+          renderDetail();
+        } else {
+          const macroIdx = parseInt(key.sequence || "", 10) - 1;
+          const macro = macroIdx >= 0 && macroIdx < MACROS.length ? MACROS[macroIdx] : undefined;
+          const ws = state.filteredWorkspaces[state.cursor];
+          if (macro && ws) {
+            if (macro.key === "3") {
+              await cmux("send-key", "--workspace", ws.ref, "Ctrl+C");
+            } else {
+              await cmux("send", "--workspace", ws.ref, macro.command);
+              if (macro.sendEnter) {
+                await cmux("send-key", "--workspace", ws.ref, "Enter");
+              }
+            }
+            errorText.content = t`${green("Sent:")} ${macro.label} → ${ws.name}`;
+            await Bun.sleep(300);
+            state.screenLines = await fetchScreen(ws.ref);
+            state.lastDetailRefresh = Date.now();
+            showView("detail");
+            renderDetail();
+          }
+        }
+
+      } else if (state.view === "tree") {
+        if (key.name === "escape") {
+          showView("dashboard");
+          renderDashboard();
+        } else if (key.name === "r") {
+          await renderTree();
         }
       }
     } catch (err: any) {
@@ -465,22 +736,39 @@ async function main() {
   // ─── Auto-refresh via frame callback ────────────────────────
   renderer.setFrameCallback(async () => {
     const now = Date.now();
+
+    // Dashboard auto-refresh every 5s
     if (state.view === "dashboard" && !state.refreshing && now - state.lastRefresh > 5000) {
       state.refreshing = true;
       try {
         state.workspaces = await fetchWorkspaces();
+        checkNotifications(state.workspaces);
         state.lastRefresh = now;
-        if (state.cursor >= state.workspaces.length) state.cursor = 0;
+        applyFilter();
         renderDashboard();
       } catch {}
       state.refreshing = false;
+    }
+
+    // Detail view auto-refresh every 3s when enabled
+    if (state.view === "detail" && state.detailAutoRefresh && now - state.lastDetailRefresh > 3000) {
+      try {
+        const ws = state.filteredWorkspaces[state.cursor];
+        if (ws) {
+          state.screenLines = await fetchScreen(ws.ref);
+          state.lastDetailRefresh = now;
+          renderDetail();
+        }
+      } catch {}
     }
   });
 
   // ─── Initial load ───────────────────────────────────────────
   renderer.setBackgroundColor("#0d1117");
   state.workspaces = await fetchWorkspaces();
+  checkNotifications(state.workspaces);
   state.lastRefresh = Date.now();
+  applyFilter();
   showView("dashboard");
   renderDashboard();
   renderer.start();

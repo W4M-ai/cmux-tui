@@ -30,15 +30,27 @@ If you're curious about how we use cmux to juggle multiple AI coding agents at o
 - List all cmux workspaces with live status indicators
 - Color-coded status: ⚡ Running, ⏳ Needs Input, ○ Idle
 - Auto-refresh every 5 seconds
+- Filter workspaces by status (`/` to cycle: all → running → needs input → idle)
+- Status change notifications — get alerted when a workspace changes state (toggle with `n`)
 - Clean, keyboard-driven navigation
 
 **Detail View**
 - Read terminal screen content from any workspace
+- Auto-refresh every 3 seconds (toggle with `a`) — no more manual refreshing
 - See what's currently running in real-time
+
+**Quick Macros** (`m` from detail view)
+- One-keystroke actions for common agentic tool commands
+- Pre-configured: approve (y), deny (n), Ctrl+C, resume, /status, /clear, /compact, /help
+- Works with Claude Code, OpenCode, Aider, and other tools that use similar commands
 
 **Input Mode**
 - Type and send commands to any workspace remotely
 - Full keyboard support from SSH terminal
+
+**Session Tree** (`t` from dashboard)
+- View the full cmux session tree (`cmux tree --all`)
+- See all workspaces and their hierarchy at a glance
 
 **Focus Control**
 - Switch which workspace is active on your Mac's display
@@ -157,18 +169,44 @@ To allow SSH sessions to control cmux remotely, you must enable password-protect
 
 ## Key Bindings
 
-### Dashboard Navigation
+### Dashboard
 
 | Key | Action |
 |-----|--------|
 | `j` / `↓` | Move cursor down |
 | `k` / `↑` | Move cursor up |
-| `Enter` | Drill into workspace detail |
-| `Esc` | Go back to dashboard |
-| `i` | Enter input mode (send commands) |
-| `f` | Focus selected workspace on Mac |
+| `Enter` | Open workspace detail |
+| `/` | Cycle filter (all → running → needs input → idle) |
+| `t` | Open session tree view |
+| `n` | Toggle notifications on/off |
 | `r` | Refresh workspace list |
 | `q` | Quit application |
+
+### Detail View
+
+| Key | Action |
+|-----|--------|
+| `r` | Refresh screen content |
+| `a` | Toggle auto-refresh (every 3s) |
+| `i` | Enter input mode (send commands) |
+| `m` | Open quick macros |
+| `f` | Focus this workspace on Mac |
+| `Enter` | Send Enter key to workspace |
+| `Esc` | Return to dashboard |
+
+### Quick Macros
+
+| Key | Action |
+|-----|--------|
+| `1` | Send `y` + Enter (approve) |
+| `2` | Send `n` + Enter (deny) |
+| `3` | Send Ctrl+C (interrupt) |
+| `4` | Send `resume` + Enter |
+| `5` | Send `/status` + Enter |
+| `6` | Send `/clear` + Enter |
+| `7` | Send `/compact` + Enter |
+| `8` | Send `/help` + Enter |
+| `Esc` | Back to detail view |
 
 ### Input Mode
 
@@ -176,15 +214,13 @@ To allow SSH sessions to control cmux remotely, you must enable password-protect
 |-----|--------|
 | Type text | Enter command |
 | `Enter` | Send command to workspace |
-| `Ctrl+C` | Cancel input |
-| `Esc` | Exit input mode |
+| `Esc` | Cancel and return to detail |
 
-### Detail View
+### Session Tree
 
 | Key | Action |
 |-----|--------|
-| `↑` / `↓` | Scroll through content |
-| `r` | Refresh screen content |
+| `r` | Refresh tree |
 | `Esc` | Return to dashboard |
 
 ---
