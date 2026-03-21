@@ -1,0 +1,33 @@
+{
+  "name": "cmux-tui",
+  "version": "0.1.0",
+  "description": "Terminal UI for remotely controlling cmux workspaces over SSH",
+  "type": "module",
+  "bin": {
+    "cmux-tui": "./bin/cmux-tui.sh"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --hot run src/index.ts"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.1.908"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
+  },
+  "keywords": ["cmux", "tui", "terminal", "ssh", "remote", "claude-code", "opentui"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/W4M-ai/cmux-tui"
+  },
+  "homepage": "https://github.com/W4M-ai/cmux-tui#readme",
+  "bugs": {
+    "url": "https://github.com/W4M-ai/cmux-tui/issues"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}

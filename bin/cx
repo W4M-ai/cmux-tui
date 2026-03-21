@@ -1,0 +1,124 @@
+#!/bin/zsh
+# cx - lightweight cmux remote control for SSH sessions
+# Part of cmux-tui: https://github.com/W4M-ai/cmux-tui
+#
+# Requires: cmux CLI in PATH, CMUX_SOCKET_PASSWORD env var set
+# Usage: cx help
+
+_cx_resolve() {
+    local query="$1"
+    cmux list-workspaces 2>/dev/null | grep -i "$query" | head -1 | awk '{
+        for(i=1;i<=NF;i++) {
+            if($i ~ /^workspace:/) { print $i; exit }
+        }
+    }'
+}
+
+case "${1:-list}" in
+    list|ls)
+        echo ''
+        echo '  ┌──────────────────────────────────────────┐'
+        echo '  │  📋  cmux Workspaces                     │'
+        echo '  └──────────────────────────────────────────┘'
+        echo ''
+        cmux list-workspaces 2>/dev/null | while IFS= read -r line; do
+            if [[ "$line" == *'[selected]'* ]]; then
+                echo "  ▸ $line"
+            else
+                echo "    $line"
+            fi
+        done
+        echo ''
+        ;;
+    tree|t)
+        cmux tree --all
+        ;;
+    read|r)
+        if [[ -n "${2:-}" ]]; then
+            local ref=$(_cx_resolve "$2")
+            [[ -z "$ref" ]] && echo "Workspace not found: $2" && exit 1
+            cmux read-screen --workspace "$ref"
+        else
+            cmux read-screen
+        fi
+        ;;
+    send|s)
+        local ref=$(_cx_resolve "$2")
+        [[ -z "$ref" ]] && echo "Workspace not found: $2" && exit 1
+        shift 2
+        cmux send --workspace "$ref" "$*"
+        ;;
+    key|k)
+        local ref=$(_cx_resolve "$2")
+        [[ -z "$ref" ]] && echo "Workspace not found: $2" && exit 1
+        cmux send-key --workspace "$ref" "$3"
+        ;;
+    run)
+        local ref=$(_cx_resolve "$2")
+        [[ -z "$ref" ]] && echo "Workspace not found: $2" && exit 1
+        shift 2
+        cmux send --workspace "$ref" "$*"
+        cmux send-key --workspace "$ref" Enter
+        ;;
+    focus|f)
+        local ref=$(_cx_resolve "$2")
+        [[ -z "$ref" ]] && echo "Workspace not found: $2" && exit 1
+        cmux select-workspace --workspace "$ref"
+        echo "Focused → $2 ($ref)"
+        ;;
+    new|n)
+        cmux new-workspace --cwd "${2:-$HOME}"
+        ;;
+    close)
+        local ref=$(_cx_resolve "$2")
+        [[ -z "$ref" ]] && echo "Workspace not found: $2" && exit 1
+        cmux close-workspace --workspace "$ref"
+        echo "Closed: $2 ($ref)"
+        ;;
+    status|st)
+        echo ''
+        echo '  ┌──────────────────────────────────────────┐'
+        echo '  │  🤖  Workspace Status                    │'
+        echo '  └──────────────────────────────────────────┘'
+        echo ''
+        cmux list-workspaces 2>/dev/null | while IFS= read -r line; do
+            local ref=$(echo "$line" | awk '{for(i=1;i<=NF;i++){if($i ~ /^workspace:/){print $i;exit}}}')
+            local name=$(echo "$line" | sed 's/^[* ]*//' | sed 's/workspace:[0-9]*//' | sed 's/^ *//' | sed 's/  *\[selected\]//')
+            local statuses=$(cmux list-status --workspace "$ref" 2>/dev/null)
+            if [[ -n "$statuses" ]]; then
+                echo "  $name:"
+                echo "    $statuses"
+            else
+                echo "  $name: (idle)"
+            fi
+        done
+        echo ''
+        ;;
+    help|h|--help|-h)
+        echo 'cx - cmux remote control for SSH sessions'
+        echo ''
+        echo 'Usage:'
+        echo '  cx              list all workspaces'
+        echo '  cx tree         full session tree'
+        echo '  cx focus <ws>   switch to workspace (fuzzy match)'
+        echo '  cx read [ws]    read terminal screen content'
+        echo '  cx send <ws> <text>  type text into workspace'
+        echo '  cx key <ws> <key>    send keystroke (Enter, Escape, etc.)'
+        echo '  cx run <ws> <cmd>    type + Enter (run a command)'
+        echo '  cx new [path]   create new workspace'
+        echo '  cx close <ws>   close a workspace'
+        echo '  cx status       Claude Code statuses'
+        echo ''
+        echo 'Workspace names are fuzzy matched (e.g. "cx focus GoM")'
+        ;;
+    *)
+        local ref=$(_cx_resolve "$1")
+        if [[ -n "$ref" ]]; then
+            cmux select-workspace --workspace "$ref"
+            echo "Focused → $1 ($ref)"
+        else
+            echo "Unknown workspace or command: $1"
+            echo "Run 'cx help' for usage."
+        fi
+        ;;
+esac
