@@ -128,8 +128,8 @@ cx run myworkspace "ls -la"  # Send command to workspace
 │  iPad/Phone │
 │  SSH Client │
 └──────┬──────┘
-       │ SSH Connection
-       │ Port 22
+       │ Mosh (recommended)
+       │ or SSH (Port 22)
        ▼
 ┌─────────────────────────────┐
 │   Your Mac               │
@@ -153,7 +153,7 @@ cx run myworkspace "ls -la"  # Send command to workspace
 **The architecture:**
 
 1. **TUI runs on your Mac** – cmux-tui is a native OpenTUI application running locally
-2. **You SSH in from mobile** – Connect from iPad/iPhone using any SSH client
+2. **You connect from mobile** – Use [Mosh](https://mosh.org/) (recommended) or SSH from iPad/iPhone. Mosh keeps your session alive through network changes and device sleep.
 3. **Secure socket communication** – TUI talks to cmux via a password-protected Unix socket
 4. **Real-time workspace control** – Send commands, switch focus, monitor status in real-time
 
@@ -207,6 +207,8 @@ Just start typing — your keystrokes go to the input buffer. All commands use `
 | `↑ / ↓` | Browse input history |
 | `Backspace` | Delete last character from buffer |
 | `Tab` | Send Tab to workspace (shell autocomplete) |
+| `Ctrl+U` / `Ctrl+D` | Scroll up / down half page |
+| `PgUp` / `PgDn` | Scroll up / down full page |
 | `Ctrl+R` | Refresh screen content |
 | `Ctrl+A` | Toggle auto-refresh (every 3s) |
 | `Ctrl+T` | Open quick macros menu |
@@ -267,9 +269,29 @@ cmux-tui automatically adapts to your terminal width:
 
 Rotate your device to adjust the layout in real-time.
 
+### Use Mosh for Reliable Connections
+
+We strongly recommend using [Mosh](https://mosh.org/) (Mobile Shell) instead of plain SSH. Mosh uses UDP-based state synchronization instead of TCP byte streams, which means your session survives Wi-Fi↔cellular handoffs, device sleep/wake, and spotty connections — exactly the scenarios you hit on iPad and iPhone.
+
+Both **Blink Shell** and **Termius** have built-in Mosh support.
+
+**Setup:**
+
+1. Install Mosh on your Mac:
+   ```bash
+   brew install mosh
+   ```
+
+2. Connect from your iPad/iPhone using Mosh instead of SSH:
+   ```bash
+   mosh user@your-mac.local
+   ```
+   Or configure Mosh as the connection type in your terminal app's host settings.
+
+**Why it matters for cmux-tui:** Since cmux-tui renders a live-updating TUI over the connection, a dropped SSH session means restarting the app. With Mosh, you can close your iPad, walk to a coffee shop, open it back up, and your TUI session is right where you left it — no reconnection needed.
+
 ### Connection Tips
 
-- **Keep-alive:** Enable SSH keep-alive in your terminal app settings to prevent disconnections
 - **Font size:** Use a monospace font at 11-13pt for readability
 - **Auto-lock:** Configure your iOS device to not auto-lock while using SSH
 - **Clipboard:** Most terminal apps support clipboard paste via long-press
@@ -303,9 +325,10 @@ Error: Timeout sending command to workspace
 
 ### SSH Connection Drops
 
-1. Enable keep-alive in your SSH client settings
-2. Check that your iOS device isn't auto-locking
-3. Try SSHing in again with `-v` flag for verbose debugging
+1. **Use Mosh** instead of SSH — this is the single biggest improvement for mobile connections. See [Use Mosh for Reliable Connections](#use-mosh-for-reliable-connections).
+2. If sticking with SSH, enable keep-alive in your SSH client settings
+3. Check that your iOS device isn't auto-locking
+4. Try SSHing in again with `-v` flag for verbose debugging
 
 ### Port 22 Not Accessible
 
@@ -412,6 +435,7 @@ MIT License – see [LICENSE](LICENSE) file for details.
 ## Resources
 
 - [cmux Documentation](https://cmux.com)
+- [Mosh (Mobile Shell)](https://mosh.org/) — recommended for mobile connections
 - [Bun Documentation](https://bun.sh/docs)
 - [OpenTUI Documentation](https://opentui.dev)
 - [GitHub Repository](https://github.com/W4M-ai/cmux-tui)
