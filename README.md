@@ -244,11 +244,12 @@ Just start typing — your keystrokes go to the input buffer. All commands use `
 
 ### Terminal Apps
 
-We recommend these SSH clients for iOS:
+Here are the iOS terminal apps we recommend, all with Mosh support:
 
-- **[Blink Shell](https://blink.sh/)** – Feature-rich, customizable, great keyboard support
-- **[Termius](https://www.termius.com/)** – User-friendly, good UI, cross-platform
-- **Prompt 3** – Well-designed, popular among developers
+- **[Moshi](https://getmoshi.app/)** – Built specifically for AI coding agent workflows. Push notifications when your agent needs input, voice-to-terminal, native Mosh. If you're using cmux-tui to monitor agentic tools, this is purpose-built for exactly that.
+- **[Blink Shell](https://blink.sh/)** – The power-user terminal. Open source, deeply customizable key mappings, excellent Mosh support, fast rendering. The go-to for developers who want a full desktop-grade terminal on iOS. Subscription at ~$20/yr.
+- **[Termius](https://www.termius.com/)** – Cross-platform (iOS, Android, Windows, Mac, Linux) with synced SSH connections across all devices. Great for teams or if you need the same setup everywhere. Generous free tier.
+- **[Prompt 3](https://panic.com/prompt/)** – By Panic (makers of Nova and Transmit). Beautifully designed native Apple app with SSH, Mosh, and Eternal Terminal support. Available on Mac, iPhone, iPad, and Apple Vision Pro. One-time purchase ~$20.
 
 ### Escape Key
 
@@ -273,7 +274,7 @@ Rotate your device to adjust the layout in real-time.
 
 We strongly recommend using [Mosh](https://mosh.org/) (Mobile Shell) instead of plain SSH. Mosh uses UDP-based state synchronization instead of TCP byte streams, which means your session survives Wi-Fi↔cellular handoffs, device sleep/wake, and spotty connections — exactly the scenarios you hit on iPad and iPhone.
 
-Both **Blink Shell** and **Termius** have built-in Mosh support.
+All four recommended terminal apps — **Moshi**, **Blink Shell**, **Termius**, and **Prompt 3** — have built-in Mosh support.
 
 **Setup:**
 
