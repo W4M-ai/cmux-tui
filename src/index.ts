@@ -55,17 +55,24 @@ const MACROS: Macro[] = [
   { key: "8", label: "help", command: "/help", sendEnter: true },
 ];
 
-// Quick-jump keys: 1-9, 0, then letters (skipping reserved dashboard keys j,k,n,q,r,t)
-const JUMP_KEYS = "1234567890abcdefghilmopsuvwxyz";
-const RESERVED_DASH_KEYS = new Set(["j", "k", "n", "q", "r", "t", "/", "?"]);
+// Quick-jump keys: 1-9, 0 for first 10, then Option+a through Option+z for 11-36
+const DIGIT_JUMP_KEYS = "1234567890";
+const LETTER_JUMP_KEYS = "abcdefghijklmnopqrstuvwxyz";
 
 function jumpKeyForIndex(i: number): string {
-  return i < JUMP_KEYS.length ? JUMP_KEYS[i]! : " ";
+  if (i < DIGIT_JUMP_KEYS.length) return DIGIT_JUMP_KEYS[i]!;
+  const letterIdx = i - DIGIT_JUMP_KEYS.length;
+  if (letterIdx < LETTER_JUMP_KEYS.length) return `⌥${LETTER_JUMP_KEYS[letterIdx]!}`;
+  return " ";
 }
 
-function indexForJumpKey(ch: string): number {
-  const idx = JUMP_KEYS.indexOf(ch.toLowerCase());
-  return idx;
+function indexForDigitJump(ch: string): number {
+  return DIGIT_JUMP_KEYS.indexOf(ch);
+}
+
+function indexForLetterJump(ch: string): number {
+  const idx = LETTER_JUMP_KEYS.indexOf(ch.toLowerCase());
+  return idx >= 0 ? idx + DIGIT_JUMP_KEYS.length : -1;
 }
 
 type Filter = "all" | "running" | "needs_input" | "idle";
@@ -632,9 +639,9 @@ async function main() {
     }
 
     if (isPhone) {
-      dashFooter.content = t`${dim("1-0,a-z")} jump ${dim("⏎")} open ${dim("/")} filter ${dim("?")} help`;
+      dashFooter.content = t`${dim("1-0")} jump ${dim("⌥a-z")} 11+ ${dim("⏎")} open ${dim("/")} filter ${dim("?")} help`;
     } else {
-      dashFooter.content = t`${dim("1-0,a-z")} jump  ${dim("j/k")} select  ${dim("⏎")} open  ${dim("/")} filter  ${dim("?")} help  ${dim("q")} quit`;
+      dashFooter.content = t`${dim("1-0")} jump  ${dim("⌥a-z")} 11+  ${dim("j/k")} select  ${dim("⏎")} open  ${dim("/")} filter  ${dim("?")} help  ${dim("q")} quit`;
     }
   }
 
@@ -743,7 +750,8 @@ async function main() {
 
     const lines = isPhone ? [
       t`${bold(white("Dashboard"))}`,
-      t`  ${accent("1-0,a-z")}  Jump to workspace`,
+      t`  ${accent("1-0")}  Jump to workspace`,
+      t`  ${accent("⌥a-z")} Jump to workspace 11+`,
       t`  ${accent("j/k")}  Move up/down`,
       t`  ${accent("⏎")}    Open workspace`,
       t`  ${accent("/")}    Cycle filter`,
@@ -764,7 +772,8 @@ async function main() {
       t`  ${accent("esc")}  Clear / back`,
     ] : [
       t`${bold(white("Dashboard"))}`,
-      t`  ${accent("1-0,a-z")}  Jump directly to workspace (letters skip j,k,n,q,r,t)`,
+      t`  ${accent("1-0")}      Jump directly to workspace 1-10`,
+      t`  ${accent("⌥a-z")}    Option + letter to jump to workspace 11+`,
       t`  ${accent("j / k")}    Move cursor down / up`,
       t`  ${accent("Enter")}    Open workspace detail view`,
       t`  ${accent("/")}        Cycle filter (all → running → needs input → idle)`,
@@ -882,9 +891,22 @@ async function main() {
           renderHelp();
         }
 
-        // Quick-jump: 1-9, 0, a-z (skipping reserved keys) opens workspace directly
-        if (key.sequence && key.sequence.length === 1 && !RESERVED_DASH_KEYS.has(key.sequence)) {
-          const num = indexForJumpKey(key.sequence);
+        // Quick-jump: digits 1-9, 0 for first 10 workspaces
+        if (key.sequence && /^[0-9]$/.test(key.sequence)) {
+          const num = indexForDigitJump(key.sequence);
+          if (num >= 0 && num < state.filteredWorkspaces.length) {
+            state.cursor = num;
+            showView("detail");
+            state.scrollOffset = -1; // follow bottom on entry
+            state.lastDetailRefresh = Date.now();
+            state.screenLines = await fetchScreen(state.filteredWorkspaces[state.cursor]!.ref);
+            renderDetail();
+          }
+        }
+
+        // Quick-jump: Option/Alt + letter for workspaces 11+
+        if (key.meta && key.name && /^[a-z]$/i.test(key.name)) {
+          const num = indexForLetterJump(key.name);
           if (num >= 0 && num < state.filteredWorkspaces.length) {
             state.cursor = num;
             showView("detail");
