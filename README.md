@@ -38,6 +38,7 @@ If you're curious about how we use cmux to juggle multiple AI coding agents at o
 **Detail View**
 - Read terminal screen content from any workspace
 - **Direct typing** — just start typing to compose a command, press Enter to send. No mode switching needed.
+- **Scrollable output** — `Ctrl+U` / `Ctrl+D` for half-page scroll, `PgUp` / `PgDn` for full page. Auto-follows new output unless you've scrolled up.
 - **Input history** — press `↑` / `↓` to browse previously sent commands. Essential on mobile.
 - **Left/right navigation** — press `←` / `→` to jump between workspaces without going back to dashboard
 - Auto-refresh every 3 seconds (toggle with `Ctrl+A`)
