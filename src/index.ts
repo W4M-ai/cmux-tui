@@ -55,6 +55,19 @@ const MACROS: Macro[] = [
   { key: "8", label: "help", command: "/help", sendEnter: true },
 ];
 
+// Quick-jump keys: 1-9, 0, then letters (skipping reserved dashboard keys j,k,n,q,r,t)
+const JUMP_KEYS = "1234567890abcdefghilmopsuvwxyz";
+const RESERVED_DASH_KEYS = new Set(["j", "k", "n", "q", "r", "t", "/", "?"]);
+
+function jumpKeyForIndex(i: number): string {
+  return i < JUMP_KEYS.length ? JUMP_KEYS[i]! : " ";
+}
+
+function indexForJumpKey(ch: string): number {
+  const idx = JUMP_KEYS.indexOf(ch.toLowerCase());
+  return idx;
+}
+
 type Filter = "all" | "running" | "needs_input" | "idle";
 
 interface State {
@@ -561,8 +574,7 @@ async function main() {
       const w = ws[i]!;
       const selected = i === state.cursor;
       const pointer = selected ? "▸ " : "  ";
-      // Quick-jump number (1-9, 0 for 10th)
-      const jumpKey = i < 9 ? `${i + 1}` : i === 9 ? "0" : " ";
+      const jumpKey = jumpKeyForIndex(i);
 
       let statusIcon: string;
       let statusFn: (s: string) => any;
@@ -620,9 +632,9 @@ async function main() {
     }
 
     if (isPhone) {
-      dashFooter.content = t`${dim("1-9")} jump ${dim("⏎")} open ${dim("/")} filter ${dim("?")} help`;
+      dashFooter.content = t`${dim("1-0,a-z")} jump ${dim("⏎")} open ${dim("/")} filter ${dim("?")} help`;
     } else {
-      dashFooter.content = t`${dim("1-9")} jump  ${dim("j/k")} select  ${dim("⏎")} open  ${dim("/")} filter  ${dim("?")} help  ${dim("q")} quit`;
+      dashFooter.content = t`${dim("1-0,a-z")} jump  ${dim("j/k")} select  ${dim("⏎")} open  ${dim("/")} filter  ${dim("?")} help  ${dim("q")} quit`;
     }
   }
 
@@ -731,7 +743,7 @@ async function main() {
 
     const lines = isPhone ? [
       t`${bold(white("Dashboard"))}`,
-      t`  ${accent("1-9")}  Jump to workspace`,
+      t`  ${accent("1-0,a-z")}  Jump to workspace`,
       t`  ${accent("j/k")}  Move up/down`,
       t`  ${accent("⏎")}    Open workspace`,
       t`  ${accent("/")}    Cycle filter`,
@@ -752,7 +764,7 @@ async function main() {
       t`  ${accent("esc")}  Clear / back`,
     ] : [
       t`${bold(white("Dashboard"))}`,
-      t`  ${accent("1-9")}      Jump directly to workspace by number`,
+      t`  ${accent("1-0,a-z")}  Jump directly to workspace (letters skip j,k,n,q,r,t)`,
       t`  ${accent("j / k")}    Move cursor down / up`,
       t`  ${accent("Enter")}    Open workspace detail view`,
       t`  ${accent("/")}        Cycle filter (all → running → needs input → idle)`,
@@ -870,9 +882,9 @@ async function main() {
           renderHelp();
         }
 
-        // Quick-jump: 1-9 opens workspace directly, 0 = 10th
-        if (key.sequence && /^[0-9]$/.test(key.sequence)) {
-          const num = key.sequence === "0" ? 9 : parseInt(key.sequence, 10) - 1;
+        // Quick-jump: 1-9, 0, a-z (skipping reserved keys) opens workspace directly
+        if (key.sequence && key.sequence.length === 1 && !RESERVED_DASH_KEYS.has(key.sequence)) {
+          const num = indexForJumpKey(key.sequence);
           if (num >= 0 && num < state.filteredWorkspaces.length) {
             state.cursor = num;
             showView("detail");

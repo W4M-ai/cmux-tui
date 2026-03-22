@@ -30,7 +30,7 @@ If you're curious about how we use cmux to juggle multiple AI coding agents at o
 - List all cmux workspaces with live status indicators
 - Color-coded status: ⚡ Running, ⏳ Needs Input, ○ Idle
 - **Smart sorting** — workspaces needing attention float to the top automatically
-- **Quick-jump** — press `1-9` to open a workspace instantly, no scrolling
+- **Quick-jump** — press `1-0` then `a-z` to open any workspace instantly, supporting up to 30 workspaces
 - Auto-refresh every 5 seconds
 - Filter workspaces by status (`/` to cycle: all → running → needs input → idle)
 - Status change notifications with terminal bell — get alerted (and a vibration on iOS) when a workspace changes state
@@ -185,7 +185,7 @@ Press `?` from any view to see the full key bindings help overlay. Here's the su
 
 | Key | Action |
 |-----|--------|
-| `1-9` / `0` | Jump directly to workspace (0 = 10th) |
+| `1-9`, `0`, `a-z` | Jump directly to workspace (letters skip reserved keys) |
 | `j` / `k` | Move cursor down / up |
 | `Enter` | Open workspace detail |
 | `/` | Cycle filter (all → running → needs input → idle) |
