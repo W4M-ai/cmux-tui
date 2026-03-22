@@ -28,6 +28,10 @@ interface Workspace {
   isActive: boolean;
   status: "running" | "needs_input" | "idle";
   statusRaw: string;
+  toolName: string;   // e.g., "claude_code", "codex", ""
+  statusText: string; // e.g., "Needs input", "Idle", "Running"
+  path: string;       // working directory from tree
+  surfaceTitle: string; // active surface title (e.g., "✳ Admin panel...")
 }
 
 type View = "dashboard" | "detail" | "macros" | "tree" | "help";
@@ -95,19 +99,58 @@ async function cmux(...args: string[]): Promise<string> {
 }
 
 async function fetchWorkspaces(): Promise<Workspace[]> {
-  const raw = await cmux("list-workspaces");
-  const lines = raw.split("\n").filter((l) => l.trim());
+  // Fetch workspace list and tree in parallel
+  const [rawList, rawTree] = await Promise.all([
+    cmux("list-workspaces"),
+    cmux("tree", "--all").catch(() => ""),
+  ]);
+
+  const lines = rawList.split("\n").filter((l) => l.trim());
   const workspaces: Workspace[] = [];
+
+  // Parse tree to extract paths and surface titles per workspace
+  const treePaths = new Map<string, string>();
+  const treeSurfaces = new Map<string, string>();
+  if (rawTree) {
+    let currentRef = "";
+    for (const tline of rawTree.split("\n")) {
+      // Match workspace lines: workspace workspace:2 "SES Mailer Pro"
+      const wsMatch = tline.match(/workspace (workspace:\d+)/);
+      if (wsMatch) currentRef = wsMatch[1]!;
+
+      // Match surface lines with titles
+      if (currentRef && tline.includes("surface") && tline.includes("[terminal]")) {
+        const titleMatch = tline.match(/"([^"]+)"(?:\s+\[selected\])?/);
+        if (titleMatch) {
+          const title = titleMatch[1]!;
+          // First [selected] surface is the active one
+          if (tline.includes("[selected]") && !treeSurfaces.has(currentRef)) {
+            treeSurfaces.set(currentRef, title);
+          }
+          // Extract path from "user@host:~/path" format
+          const pathMatch = title.match(/[^:]+:(~\/[^\s]+|\/[^\s]+)/);
+          if (pathMatch && !treePaths.has(currentRef)) {
+            treePaths.set(currentRef, pathMatch[1]!);
+          }
+        }
+      }
+    }
+  }
 
   for (const line of lines) {
     const m = line.match(/^([*\s])\s*(workspace:\d+)\s+(.+?)(?:\s+\[selected\])?$/);
     if (!m) continue;
+    const ref = m[2]!;
     workspaces.push({
-      ref: m[2]!,
+      ref,
       name: m[3]!.trim(),
       isActive: m[1] === "*" || line.includes("[selected]"),
       status: "idle",
       statusRaw: "",
+      toolName: "",
+      statusText: "",
+      path: treePaths.get(ref) ?? "",
+      surfaceTitle: treeSurfaces.get(ref) ?? "",
     });
   }
 
@@ -117,6 +160,12 @@ async function fetchWorkspaces(): Promise<Workspace[]> {
       try {
         const s = await cmux("list-status", "--workspace", ws.ref);
         ws.statusRaw = s;
+        // Parse "claude_code=Needs input icon=..." or "claude_code=Running icon=..."
+        const toolMatch = s.match(/^(\w+)=(.+?)\s+icon=/);
+        if (toolMatch) {
+          ws.toolName = toolMatch[1]!;
+          ws.statusText = toolMatch[2]!;
+        }
         if (s.includes("Needs input") || s.includes("Needs Input")) ws.status = "needs_input";
         else if (s.includes("Running")) ws.status = "running";
       } catch {}
@@ -236,19 +285,34 @@ async function main() {
   dashGroup.add(dashHeader);
 
   // Workspace rows - pre-create slots for up to 20 workspaces
+  // Each workspace gets 2 rows on tablet (name + detail), 1 on phone
   const MAX_SLOTS = 20;
   const dashRows: TextRenderable[] = [];
+  const dashDetailRows: TextRenderable[] = [];
   for (let i = 0; i < MAX_SLOTS; i++) {
+    const rowTop = isPhone ? 2 + i : 2 + i * 2;
     const row = new TextRenderable(renderer, {
       id: `dash-row-${i}`,
       position: "absolute",
       left: 1,
-      top: 2 + i,
+      top: rowTop,
       content: "",
       zIndex: 5,
     });
     dashGroup.add(row);
     dashRows.push(row);
+
+    // Detail row (path/tool) — only used on tablet
+    const detailRow = new TextRenderable(renderer, {
+      id: `dash-detail-${i}`,
+      position: "absolute",
+      left: 5,
+      top: rowTop + 1,
+      content: "",
+      zIndex: 5,
+    });
+    dashGroup.add(detailRow);
+    dashDetailRows.push(detailRow);
   }
 
   const dashFooter = new TextRenderable(renderer, {
@@ -487,6 +551,7 @@ async function main() {
     for (let i = 0; i < MAX_SLOTS; i++) {
       if (i >= ws.length) {
         dashRows[i]!.content = "";
+        dashDetailRows[i]!.content = "";
         continue;
       }
 
@@ -518,10 +583,30 @@ async function main() {
         const truncName = w.name.length > maxName ? w.name.substring(0, maxName - 1) + "…" : w.name;
         const name = selected ? bold(white(truncName)) : truncName;
         dashRows[i]!.content = t`${dim(jumpKey)} ${selected ? accent(pointer) : dim(pointer)}${name} ${statusFn(statusIcon)}`;
+        dashDetailRows[i]!.content = "";
       } else {
+        // Tablet: 2-line rows — name + status, then path/tool info
         const name = selected ? bold(white(w.name)) : w.name;
-        const status = statusFn(`${statusIcon} ${w.status.replace("_", " ")}`);
+        const statusLabel = w.statusText || w.status.replace("_", " ");
+        const status = statusFn(`${statusIcon} ${statusLabel}`);
         dashRows[i]!.content = t`${dim(jumpKey)} ${selected ? accent(pointer) : dim(pointer)}${name} ${status}`;
+
+        // Detail line: tool + path
+        const parts: string[] = [];
+        if (w.toolName) {
+          const toolDisplay = w.toolName.replace("_", " ");
+          parts.push(toolDisplay);
+        }
+        if (w.path) {
+          // Shorten path: ~/Development/SES-Mailer-Pro → ~/Dev.../SES-Mailer-Pro
+          const shortPath = w.path.replace(/^~\/Development\//, "~/…/");
+          parts.push(shortPath);
+        } else if (w.surfaceTitle && !w.surfaceTitle.startsWith("✳")) {
+          // Use surface title as fallback if no path
+          const maxTitle = W - 10;
+          parts.push(w.surfaceTitle.length > maxTitle ? w.surfaceTitle.substring(0, maxTitle - 1) + "…" : w.surfaceTitle);
+        }
+        dashDetailRows[i]!.content = parts.length > 0 ? t`${dim(parts.join(" · "))}` : "";
       }
     }
 

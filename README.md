@@ -244,7 +244,7 @@ Just start typing — your keystrokes go to the input buffer. All commands use `
 
 We recommend these SSH clients for iOS:
 
-- **[Blink Shell](https://blinkshell.com/)** – Feature-rich, customizable, great keyboard support
+- **[Blink Shell](https://blink.sh/)** – Feature-rich, customizable, great keyboard support
 - **[Termius](https://www.termius.com/)** – User-friendly, good UI, cross-platform
 - **Prompt 3** – Well-designed, popular among developers
 
