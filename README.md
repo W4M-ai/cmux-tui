@@ -29,16 +29,18 @@ If you're curious about how we use cmux to juggle multiple AI coding agents at o
 **Dashboard View**
 - List all cmux workspaces with live status indicators
 - Color-coded status: ⚡ Running, ⏳ Needs Input, ○ Idle
+- **Smart sorting** — workspaces needing attention float to the top automatically
+- **Quick-jump** — press `1-9` to open a workspace instantly, no scrolling
 - Auto-refresh every 5 seconds
 - Filter workspaces by status (`/` to cycle: all → running → needs input → idle)
-- Status change notifications — get alerted when a workspace changes state (toggle with `n`)
-- Clean, keyboard-driven navigation
+- Status change notifications with terminal bell — get alerted (and a vibration on iOS) when a workspace changes state
 
 **Detail View**
 - Read terminal screen content from any workspace
-- Auto-refresh every 3 seconds (toggle with `Ctrl+A`) — no more manual refreshing
-- See what's currently running in real-time
 - **Direct typing** — just start typing to compose a command, press Enter to send. No mode switching needed.
+- **Input history** — press `↑` / `↓` to browse previously sent commands. Essential on mobile.
+- **Left/right navigation** — press `←` / `→` to jump between workspaces without going back to dashboard
+- Auto-refresh every 3 seconds (toggle with `Ctrl+A`)
 - Send `Ctrl+C` directly to workspaces to interrupt running processes
 - Tab key support for shell autocomplete
 
@@ -50,6 +52,15 @@ If you're curious about how we use cmux to juggle multiple AI coding agents at o
 **Session Tree** (`t` from dashboard)
 - View the full cmux session tree (`cmux tree --all`)
 - See all workspaces and their hierarchy at a glance
+
+**Phone-Optimized Layout**
+- Automatically detects narrow terminals (< 50 cols) and switches to compact mode
+- Truncated workspace names, abbreviated status, minimal footer
+- Same features, tighter layout — designed for iPhone SSH sessions
+
+**Help Overlay** (`?` from any view)
+- Quick reference for all key bindings
+- Adapts to phone/tablet layout
 
 **Focus Control**
 - Switch which workspace is active on your Mac's display
@@ -168,34 +179,40 @@ To allow SSH sessions to control cmux remotely, you must enable password-protect
 
 ## Key Bindings
 
+Press `?` from any view to see the full key bindings help overlay. Here's the summary:
+
 ### Dashboard
 
 | Key | Action |
 |-----|--------|
-| `j` / `↓` | Move cursor down |
-| `k` / `↑` | Move cursor up |
+| `1-9` / `0` | Jump directly to workspace (0 = 10th) |
+| `j` / `k` | Move cursor down / up |
 | `Enter` | Open workspace detail |
 | `/` | Cycle filter (all → running → needs input → idle) |
 | `t` | Open session tree view |
 | `n` | Toggle notifications on/off |
 | `r` | Refresh workspace list |
+| `?` | Help overlay |
 | `q` | Quit application |
 
 ### Detail View (Direct Typing)
 
-The detail view uses direct typing — just start typing and your keystrokes go to the input buffer. No mode switching needed. All commands use `Ctrl+` combos to stay out of your way.
+Just start typing — your keystrokes go to the input buffer. All commands use `Ctrl+` combos to stay out of your way.
 
 | Key | Action |
 |-----|--------|
 | Type text | Compose a command in the input buffer |
-| `Enter` | Send buffer contents to workspace (or just Enter if empty) |
+| `Enter` | Send buffer to workspace (or just Enter if empty) |
+| `← / →` | Switch to previous / next workspace |
+| `↑ / ↓` | Browse input history |
 | `Backspace` | Delete last character from buffer |
 | `Tab` | Send Tab to workspace (shell autocomplete) |
 | `Ctrl+R` | Refresh screen content |
 | `Ctrl+A` | Toggle auto-refresh (every 3s) |
 | `Ctrl+T` | Open quick macros menu |
 | `Ctrl+F` | Focus this workspace on Mac |
-| `Ctrl+C` | Send Ctrl+C to workspace (interrupt) |
+| `Ctrl+C` | Send interrupt to workspace |
+| `?` | Help overlay |
 | `Esc` | Clear input buffer, or return to dashboard if empty |
 
 ### Quick Macros

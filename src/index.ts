@@ -30,7 +30,7 @@ interface Workspace {
   statusRaw: string;
 }
 
-type View = "dashboard" | "detail" | "macros" | "tree";
+type View = "dashboard" | "detail" | "macros" | "tree" | "help";
 
 interface Macro {
   key: string;       // display key
@@ -61,6 +61,8 @@ interface State {
   cursor: number;
   screenLines: string[];
   inputBuffer: string;
+  inputHistory: string[];
+  historyIndex: number;       // -1 = not browsing history
   error: string;
   lastRefresh: number;
   lastDetailRefresh: number;
@@ -70,6 +72,13 @@ interface State {
   previousStatuses: Map<string, string>;
   notificationQueue: string[];
 }
+
+// Status priority for sorting (higher = more urgent, floats to top)
+const STATUS_PRIORITY: Record<string, number> = {
+  needs_input: 2,
+  running: 1,
+  idle: 0,
+};
 
 // ─── cmux CLI wrapper ───────────────────────────────────────────
 async function cmux(...args: string[]): Promise<string> {
@@ -146,6 +155,9 @@ async function main() {
   const W = renderer.width;
   const H = renderer.height;
 
+  // Phone mode: compact layout for narrow terminals
+  const isPhone = W < 50;
+
   const state: State = {
     view: "dashboard",
     workspaces: [],
@@ -154,6 +166,8 @@ async function main() {
     cursor: 0,
     screenLines: [],
     inputBuffer: "",
+    inputHistory: [],
+    historyIndex: -1,
     error: "",
     lastRefresh: 0,
     lastDetailRefresh: 0,
@@ -164,13 +178,16 @@ async function main() {
     notificationQueue: [],
   };
 
-  // Helper to apply current filter
+  // Helper to apply current filter + status-priority sorting
   function applyFilter() {
-    if (state.filter === "all") {
-      state.filteredWorkspaces = state.workspaces;
-    } else {
-      state.filteredWorkspaces = state.workspaces.filter(w => w.status === state.filter);
-    }
+    let list = state.filter === "all"
+      ? [...state.workspaces]
+      : state.workspaces.filter(w => w.status === state.filter);
+
+    // Sort: needs_input first, then running, then idle
+    list.sort((a, b) => (STATUS_PRIORITY[b.status] ?? 0) - (STATUS_PRIORITY[a.status] ?? 0));
+
+    state.filteredWorkspaces = list;
     if (state.cursor >= state.filteredWorkspaces.length) {
       state.cursor = Math.max(0, state.filteredWorkspaces.length - 1);
     }
@@ -190,6 +207,10 @@ async function main() {
       if (prev && prev !== ws.status) {
         const emoji = ws.status === "needs_input" ? "⏳" : ws.status === "running" ? "⚡" : "○";
         state.notificationQueue.push(`${emoji} ${ws.name}: ${prev.replace("_", " ")} → ${ws.status.replace("_", " ")}`);
+        // Terminal bell — triggers badge/vibration in iOS SSH apps
+        if (ws.status === "needs_input") {
+          process.stdout.write("\x07");
+        }
       }
       state.previousStatuses.set(ws.ref, ws.status);
     }
@@ -385,6 +406,50 @@ async function main() {
 
   renderer.root.add(treeGroup);
 
+  // === HELP VIEW ===
+  const helpGroup = new BoxRenderable(renderer, {
+    id: "help-group",
+    zIndex: 1,
+    visible: false,
+  });
+
+  const helpHeader = new TextRenderable(renderer, {
+    id: "help-header",
+    position: "absolute",
+    left: 1,
+    top: 0,
+    content: "",
+    zIndex: 10,
+  });
+  helpGroup.add(helpHeader);
+
+  const MAX_HELP_LINES = 30;
+  const helpRows: TextRenderable[] = [];
+  for (let i = 0; i < MAX_HELP_LINES; i++) {
+    const row = new TextRenderable(renderer, {
+      id: `help-${i}`,
+      position: "absolute",
+      left: 1,
+      top: 2 + i,
+      content: "",
+      zIndex: 5,
+    });
+    helpGroup.add(row);
+    helpRows.push(row);
+  }
+
+  const helpFooter = new TextRenderable(renderer, {
+    id: "help-footer",
+    position: "absolute",
+    left: 1,
+    top: H - 1,
+    content: "",
+    zIndex: 10,
+  });
+  helpGroup.add(helpFooter);
+
+  renderer.root.add(helpGroup);
+
   // === ERROR OVERLAY ===
   const errorText = new TextRenderable(renderer, {
     id: "error-text",
@@ -403,6 +468,7 @@ async function main() {
     detailGroup.visible = v === "detail";
     macrosGroup.visible = v === "macros";
     treeGroup.visible = v === "tree";
+    helpGroup.visible = v === "help";
   }
 
   // ─── Render functions ───────────────────────────────────────
@@ -412,7 +478,11 @@ async function main() {
     const filterLabel = state.filter === "all" ? "" : ` [${state.filter.replace("_", " ")}]`;
     const notifIcon = state.notifications ? " 🔔" : "";
 
-    dashHeader.content = t`${bold(accent("cmux Remote"))} ${dim(`(${ws.length}/${state.workspaces.length} workspaces${refreshIcon}${filterLabel}${notifIcon})`)}`;
+    if (isPhone) {
+      dashHeader.content = t`${bold(accent("cmux"))} ${dim(`${ws.length}ws${refreshIcon}${filterLabel}${notifIcon}`)}`;
+    } else {
+      dashHeader.content = t`${bold(accent("cmux Remote"))} ${dim(`(${ws.length}/${state.workspaces.length} workspaces${refreshIcon}${filterLabel}${notifIcon})`)}`;
+    }
 
     for (let i = 0; i < MAX_SLOTS; i++) {
       if (i >= ws.length) {
@@ -423,6 +493,8 @@ async function main() {
       const w = ws[i]!;
       const selected = i === state.cursor;
       const pointer = selected ? "▸ " : "  ";
+      // Quick-jump number (1-9, 0 for 10th)
+      const jumpKey = i < 9 ? `${i + 1}` : i === 9 ? "0" : " ";
 
       let statusIcon: string;
       let statusFn: (s: string) => any;
@@ -440,10 +512,17 @@ async function main() {
           statusFn = dim;
       }
 
-      const name = selected ? bold(white(w.name)) : w.name;
-      const status = statusFn(`${statusIcon} ${w.status.replace("_", " ")}`);
-
-      dashRows[i]!.content = t`${selected ? accent(pointer) : dim(pointer)}${name} ${status}`;
+      if (isPhone) {
+        // Compact: "1 ▸ VoiceFlo ⏳" — truncate name to fit
+        const maxName = W - 10;
+        const truncName = w.name.length > maxName ? w.name.substring(0, maxName - 1) + "…" : w.name;
+        const name = selected ? bold(white(truncName)) : truncName;
+        dashRows[i]!.content = t`${dim(jumpKey)} ${selected ? accent(pointer) : dim(pointer)}${name} ${statusFn(statusIcon)}`;
+      } else {
+        const name = selected ? bold(white(w.name)) : w.name;
+        const status = statusFn(`${statusIcon} ${w.status.replace("_", " ")}`);
+        dashRows[i]!.content = t`${dim(jumpKey)} ${selected ? accent(pointer) : dim(pointer)}${name} ${status}`;
+      }
     }
 
     // Show notification queue if any
@@ -452,7 +531,11 @@ async function main() {
       errorText.content = t`${yellow("▶")} ${note}`;
     }
 
-    dashFooter.content = t`${dim("j/k")} select  ${dim("⏎")} open  ${dim("r")} refresh  ${dim("/")} filter  ${dim("n")} notify  ${dim("q")} quit`;
+    if (isPhone) {
+      dashFooter.content = t`${dim("1-9")} jump ${dim("⏎")} open ${dim("/")} filter ${dim("?")} help`;
+    } else {
+      dashFooter.content = t`${dim("1-9")} jump  ${dim("j/k")} select  ${dim("⏎")} open  ${dim("/")} filter  ${dim("?")} help  ${dim("q")} quit`;
+    }
   }
 
   function renderDetail() {
@@ -467,7 +550,15 @@ async function main() {
     }
 
     const autoIcon = state.detailAutoRefresh ? green("⟳") : dim("⟳");
-    detailHeader.content = t`${bold(accent(ws.name))} ${statusFn(`[${ws.status.replace("_", " ")}]`)} ${dim(ws.ref)} ${autoIcon}`;
+    const posLabel = dim(`[${state.cursor + 1}/${state.filteredWorkspaces.length}]`);
+
+    if (isPhone) {
+      const maxName = W - 15;
+      const truncName = ws.name.length > maxName ? ws.name.substring(0, maxName - 1) + "…" : ws.name;
+      detailHeader.content = t`${bold(accent(truncName))} ${statusFn(`[${ws.status === "needs_input" ? "input" : ws.status}]`)} ${autoIcon}`;
+    } else {
+      detailHeader.content = t`${bold(accent(ws.name))} ${statusFn(`[${ws.status.replace("_", " ")}]`)} ${posLabel} ${dim(ws.ref)} ${autoIcon}`;
+    }
 
     // Leave room: header(1) + gap(1) + screen + gap(1) + input(1) + status(1) + footer(1)
     const visibleLines = Math.min(H - 6, MAX_SCREEN_LINES);
@@ -480,13 +571,18 @@ async function main() {
     }
 
     // Inline input prompt — always visible, shows what you're typing
+    const histHint = state.historyIndex >= 0 ? dim(` (history ${state.historyIndex + 1}/${state.inputHistory.length})`) : "";
     if (state.inputBuffer.length > 0) {
-      detailInputLine.content = t`${accent("❯")} ${state.inputBuffer}${fg("#4C8DFF")("█")}`;
+      detailInputLine.content = t`${accent("❯")} ${state.inputBuffer}${fg("#4C8DFF")("█")}${histHint}`;
     } else {
       detailInputLine.content = t`${dim("❯ type a command...")}`;
     }
 
-    detailFooter.content = t`${dim("esc")} back  ${dim("^R")} refresh  ${dim("^A")} auto  ${dim("^T")} macros  ${dim("^F")} focus  ${dim("^C")} interrupt  ${dim("⏎")} send`;
+    if (isPhone) {
+      detailFooter.content = t`${dim("esc")} back ${dim("◀▶")} prev/next ${dim("?")} help ${dim("⏎")} send`;
+    } else {
+      detailFooter.content = t`${dim("esc")} back  ${dim("◀▶")} prev/next  ${dim("↑↓")} history  ${dim("^R")} refresh  ${dim("^T")} macros  ${dim("?")} help  ${dim("⏎")} send`;
+    }
   }
 
   function renderMacros() {
@@ -522,6 +618,65 @@ async function main() {
     }
 
     treeFooter.content = t`${dim("esc")} back  ${dim("r")} refresh`;
+  }
+
+  function renderHelp() {
+    helpHeader.content = t`${bold(accent("Key Bindings"))}`;
+
+    const lines = isPhone ? [
+      t`${bold(white("Dashboard"))}`,
+      t`  ${accent("1-9")}  Jump to workspace`,
+      t`  ${accent("j/k")}  Move up/down`,
+      t`  ${accent("⏎")}    Open workspace`,
+      t`  ${accent("/")}    Cycle filter`,
+      t`  ${accent("t")}    Session tree`,
+      t`  ${accent("n")}    Toggle notifications`,
+      t`  ${accent("r")}    Refresh`,
+      t`  ${accent("q")}    Quit`,
+      "",
+      t`${bold(white("Detail View"))}`,
+      t`  ${accent("type")}  Compose command`,
+      t`  ${accent("⏎")}    Send to workspace`,
+      t`  ${accent("◀ ▶")}  Prev/next workspace`,
+      t`  ${accent("↑ ↓")}  Browse input history`,
+      t`  ${accent("^R")}   Refresh  ${accent("^A")} Auto`,
+      t`  ${accent("^T")}   Macros   ${accent("^F")} Focus`,
+      t`  ${accent("^C")}   Interrupt workspace`,
+      t`  ${accent("esc")}  Clear / back`,
+    ] : [
+      t`${bold(white("Dashboard"))}`,
+      t`  ${accent("1-9")}      Jump directly to workspace by number`,
+      t`  ${accent("j / k")}    Move cursor down / up`,
+      t`  ${accent("Enter")}    Open workspace detail view`,
+      t`  ${accent("/")}        Cycle filter (all → running → needs input → idle)`,
+      t`  ${accent("t")}        Open session tree view`,
+      t`  ${accent("n")}        Toggle notifications on/off`,
+      t`  ${accent("r")}        Refresh workspace list`,
+      t`  ${accent("q")}        Quit application`,
+      "",
+      t`${bold(white("Detail View (Direct Typing)"))}`,
+      t`  ${accent("type")}     Characters go to the input buffer`,
+      t`  ${accent("Enter")}    Send buffer to workspace (or just Enter if empty)`,
+      t`  ${accent("← →")}      Switch to previous / next workspace`,
+      t`  ${accent("↑ ↓")}      Browse input history`,
+      t`  ${accent("Tab")}      Send Tab key to workspace`,
+      t`  ${accent("Ctrl+R")}   Refresh screen content`,
+      t`  ${accent("Ctrl+A")}   Toggle auto-refresh (3s)`,
+      t`  ${accent("Ctrl+T")}   Open quick macros menu`,
+      t`  ${accent("Ctrl+F")}   Focus workspace on Mac display`,
+      t`  ${accent("Ctrl+C")}   Send interrupt to workspace`,
+      t`  ${accent("Esc")}      Clear input buffer, or back to dashboard`,
+      "",
+      t`${bold(white("Quick Macros"))}`,
+      t`  ${accent("1")} approve  ${accent("2")} deny  ${accent("3")} Ctrl+C  ${accent("4")} resume`,
+      t`  ${accent("5")} /status  ${accent("6")} /clear  ${accent("7")} /compact  ${accent("8")} /help`,
+    ];
+
+    for (let i = 0; i < MAX_HELP_LINES; i++) {
+      helpRows[i]!.content = i < lines.length ? (lines[i] ?? "") : "";
+    }
+
+    helpFooter.content = t`${dim("esc")} close help`;
   }
 
   // ─── Keyboard handler ───────────────────────────────────────
@@ -588,7 +743,7 @@ async function main() {
             break;
         }
 
-        // Filter with / key (detected by sequence since "name" may vary)
+        // Filter with / key
         if (key.sequence === "/") {
           const filters: Filter[] = ["all", "running", "needs_input", "idle"];
           const idx = filters.indexOf(state.filter);
@@ -596,6 +751,24 @@ async function main() {
           applyFilter();
           errorText.content = t`${accent("Filter:")} ${state.filter === "all" ? "showing all" : state.filter.replace("_", " ")}`;
           renderDashboard();
+        }
+
+        // Help with ? key
+        if (key.sequence === "?") {
+          showView("help");
+          renderHelp();
+        }
+
+        // Quick-jump: 1-9 opens workspace directly, 0 = 10th
+        if (key.sequence && /^[0-9]$/.test(key.sequence)) {
+          const num = key.sequence === "0" ? 9 : parseInt(key.sequence, 10) - 1;
+          if (num >= 0 && num < state.filteredWorkspaces.length) {
+            state.cursor = num;
+            showView("detail");
+            state.lastDetailRefresh = Date.now();
+            state.screenLines = await fetchScreen(state.filteredWorkspaces[state.cursor]!.ref);
+            renderDetail();
+          }
         }
 
       } else if (state.view === "detail") {
@@ -644,9 +817,17 @@ async function main() {
         } else if (key.name === "return") {
           // Enter → send buffer contents (or just Enter if empty)
           if (state.inputBuffer.trim()) {
+            // Save to history (avoid duplicating last entry)
+            const cmd = state.inputBuffer.trim();
+            if (state.inputHistory[state.inputHistory.length - 1] !== cmd) {
+              state.inputHistory.push(cmd);
+              // Keep max 50 entries
+              if (state.inputHistory.length > 50) state.inputHistory.shift();
+            }
             await cmux("send", "--workspace", ws.ref, state.inputBuffer);
             await cmux("send-key", "--workspace", ws.ref, "Enter");
             state.inputBuffer = "";
+            state.historyIndex = -1;
           } else {
             await cmux("send-key", "--workspace", ws.ref, "Enter");
           }
@@ -654,8 +835,48 @@ async function main() {
           state.screenLines = await fetchScreen(ws.ref);
           state.lastDetailRefresh = Date.now();
           renderDetail();
+        } else if (key.name === "left") {
+          // ← → previous workspace
+          if (state.cursor > 0) {
+            state.cursor--;
+            state.inputBuffer = "";
+            state.historyIndex = -1;
+            state.lastDetailRefresh = Date.now();
+            state.screenLines = await fetchScreen(state.filteredWorkspaces[state.cursor]!.ref);
+            renderDetail();
+          }
+        } else if (key.name === "right") {
+          // → → next workspace
+          if (state.cursor < state.filteredWorkspaces.length - 1) {
+            state.cursor++;
+            state.inputBuffer = "";
+            state.historyIndex = -1;
+            state.lastDetailRefresh = Date.now();
+            state.screenLines = await fetchScreen(state.filteredWorkspaces[state.cursor]!.ref);
+            renderDetail();
+          }
+        } else if (key.name === "up") {
+          // ↑ → browse input history (older)
+          if (state.inputHistory.length > 0) {
+            if (state.historyIndex < state.inputHistory.length - 1) {
+              state.historyIndex++;
+            }
+            state.inputBuffer = state.inputHistory[state.inputHistory.length - 1 - state.historyIndex] ?? "";
+            renderDetail();
+          }
+        } else if (key.name === "down") {
+          // ↓ → browse input history (newer)
+          if (state.historyIndex > 0) {
+            state.historyIndex--;
+            state.inputBuffer = state.inputHistory[state.inputHistory.length - 1 - state.historyIndex] ?? "";
+          } else {
+            state.historyIndex = -1;
+            state.inputBuffer = "";
+          }
+          renderDetail();
         } else if (key.name === "backspace" || key.name === "delete") {
           state.inputBuffer = state.inputBuffer.slice(0, -1);
+          state.historyIndex = -1;
           renderDetail();
         } else if (key.name === "tab") {
           // Tab → send tab to workspace (useful for autocomplete)
@@ -664,9 +885,14 @@ async function main() {
           state.screenLines = await fetchScreen(ws.ref);
           state.lastDetailRefresh = Date.now();
           renderDetail();
+        } else if (key.sequence === "?") {
+          // ? → help overlay
+          showView("help");
+          renderHelp();
         } else if (key.sequence && key.sequence.length === 1 && key.sequence.charCodeAt(0) >= 32) {
           // Printable character → add to input buffer
           state.inputBuffer += key.sequence;
+          state.historyIndex = -1;
           renderDetail();
         }
 
@@ -702,6 +928,13 @@ async function main() {
           renderDashboard();
         } else if (key.name === "r") {
           await renderTree();
+        }
+
+      } else if (state.view === "help") {
+        // Any key returns from help
+        if (key.name === "escape" || key.name === "return" || key.sequence === "?" || key.sequence === "q") {
+          showView("dashboard");
+          renderDashboard();
         }
       }
     } catch (err: any) {
