@@ -139,13 +139,14 @@ async function fetchWorkspaces(): Promise<Workspace[]> {
   }
 
   for (const line of lines) {
-    const m = line.match(/^([*\s])\s*(workspace:\d+)\s+(.+?)(?:\s+\[selected\])?$/);
+    // Match workspace lines — flexible leading chars to handle various cmux output formats
+    const m = line.match(/(workspace:\d+)\s+(.+?)(?:\s+\[selected\])?\s*$/);
     if (!m) continue;
-    const ref = m[2]!;
+    const ref = m[1]!;
     workspaces.push({
       ref,
-      name: m[3]!.trim(),
-      isActive: m[1] === "*" || line.includes("[selected]"),
+      name: m[2]!.trim(),
+      isActive: line.includes("*") || line.includes("[selected]"),
       status: "idle",
       statusRaw: "",
       toolName: "",
