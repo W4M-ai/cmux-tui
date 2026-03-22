@@ -64,6 +64,7 @@ interface State {
   filter: Filter;
   cursor: number;
   screenLines: string[];
+  scrollOffset: number;     // scroll position in detail view
   inputBuffer: string;
   inputHistory: string[];
   historyIndex: number;       // -1 = not browsing history
@@ -214,6 +215,7 @@ async function main() {
     filter: "all",
     cursor: 0,
     screenLines: [],
+    scrollOffset: 0,
     inputBuffer: "",
     inputHistory: [],
     historyIndex: -1,
@@ -637,22 +639,40 @@ async function main() {
     const autoIcon = state.detailAutoRefresh ? green("⟳") : dim("⟳");
     const posLabel = dim(`[${state.cursor + 1}/${state.filteredWorkspaces.length}]`);
 
+    // Scrollable screen content
+    // Available rows: header(1) + gap(1) + screen + input(1) + error(1) + footer(1) = H - 5
+    const visibleLines = Math.min(H - 5, MAX_SCREEN_LINES);
+    const totalLines = state.screenLines.length;
+    const maxScroll = Math.max(0, totalLines - visibleLines);
+
+    // Auto-scroll to bottom when content exceeds visible area (unless user scrolled up)
+    if (state.scrollOffset < 0) {
+      // -1 means "follow bottom"
+      state.scrollOffset = maxScroll;
+    }
+    // Clamp scroll offset
+    state.scrollOffset = Math.min(state.scrollOffset, maxScroll);
+
+    const scrollIndicator = totalLines > visibleLines
+      ? dim(` [${state.scrollOffset + visibleLines}/${totalLines}]`)
+      : "";
+
+    // Re-render header with scroll info
     if (isPhone) {
       const maxName = W - 15;
       const truncName = ws.name.length > maxName ? ws.name.substring(0, maxName - 1) + "…" : ws.name;
-      detailHeader.content = t`${bold(accent(truncName))} ${statusFn(`[${ws.status === "needs_input" ? "input" : ws.status}]`)} ${autoIcon}`;
+      detailHeader.content = t`${bold(accent(truncName))} ${statusFn(`[${ws.status === "needs_input" ? "input" : ws.status}]`)} ${autoIcon}${scrollIndicator}`;
     } else {
-      detailHeader.content = t`${bold(accent(ws.name))} ${statusFn(`[${ws.status.replace("_", " ")}]`)} ${posLabel} ${dim(ws.ref)} ${autoIcon}`;
+      detailHeader.content = t`${bold(accent(ws.name))} ${statusFn(`[${ws.status.replace("_", " ")}]`)} ${posLabel} ${dim(ws.ref)} ${autoIcon}${scrollIndicator}`;
     }
 
-    // Leave room: header(1) + gap(1) + screen + gap(1) + input(1) + status(1) + footer(1)
-    const visibleLines = Math.min(H - 6, MAX_SCREEN_LINES);
     for (let i = 0; i < MAX_SCREEN_LINES; i++) {
-      if (i >= visibleLines || i >= state.screenLines.length) {
+      const srcIdx = i + state.scrollOffset;
+      if (i >= visibleLines || srcIdx >= totalLines) {
         screenRows[i]!.content = "";
         continue;
       }
-      screenRows[i]!.content = state.screenLines[i]!.substring(0, W - 2);
+      screenRows[i]!.content = state.screenLines[srcIdx]!.substring(0, W - 2);
     }
 
     // Inline input prompt — always visible, shows what you're typing
@@ -664,9 +684,9 @@ async function main() {
     }
 
     if (isPhone) {
-      detailFooter.content = t`${dim("esc")} back ${dim("◀▶")} prev/next ${dim("?")} help ${dim("⏎")} send`;
+      detailFooter.content = t`${dim("esc")} back ${dim("◀▶")} prev/next ${dim("^U/D")} scroll ${dim("?")} help ${dim("⏎")} send`;
     } else {
-      detailFooter.content = t`${dim("esc")} back  ${dim("◀▶")} prev/next  ${dim("↑↓")} history  ${dim("^R")} refresh  ${dim("^T")} macros  ${dim("?")} help  ${dim("⏎")} send`;
+      detailFooter.content = t`${dim("esc")} back  ${dim("◀▶")} prev/next  ${dim("↑↓")} history  ${dim("^U/^D")} scroll  ${dim("^R")} refresh  ${dim("^T")} macros  ${dim("?")} help  ${dim("⏎")} send`;
     }
   }
 
@@ -724,6 +744,7 @@ async function main() {
       t`  ${accent("⏎")}    Send to workspace`,
       t`  ${accent("◀ ▶")}  Prev/next workspace`,
       t`  ${accent("↑ ↓")}  Browse input history`,
+      t`  ${accent("^U/D")} Scroll up/down`,
       t`  ${accent("^R")}   Refresh  ${accent("^A")} Auto`,
       t`  ${accent("^T")}   Macros   ${accent("^F")} Focus`,
       t`  ${accent("^C")}   Interrupt workspace`,
@@ -745,6 +766,9 @@ async function main() {
       t`  ${accent("← →")}      Switch to previous / next workspace`,
       t`  ${accent("↑ ↓")}      Browse input history`,
       t`  ${accent("Tab")}      Send Tab key to workspace`,
+      t`  ${accent("Ctrl+U")}   Scroll up half page`,
+      t`  ${accent("Ctrl+D")}   Scroll down half page`,
+      t`  ${accent("PgUp/Dn")}  Scroll full page`,
       t`  ${accent("Ctrl+R")}   Refresh screen content`,
       t`  ${accent("Ctrl+A")}   Toggle auto-refresh (3s)`,
       t`  ${accent("Ctrl+T")}   Open quick macros menu`,
@@ -797,6 +821,7 @@ async function main() {
           case "return":
             if (state.filteredWorkspaces.length > 0) {
               showView("detail");
+              state.scrollOffset = -1; // follow bottom on entry
               state.lastDetailRefresh = Date.now();
               state.screenLines = await fetchScreen(state.filteredWorkspaces[state.cursor]!.ref);
               renderDetail();
@@ -850,6 +875,7 @@ async function main() {
           if (num >= 0 && num < state.filteredWorkspaces.length) {
             state.cursor = num;
             showView("detail");
+            state.scrollOffset = -1; // follow bottom on entry
             state.lastDetailRefresh = Date.now();
             state.screenLines = await fetchScreen(state.filteredWorkspaces[state.cursor]!.ref);
             renderDetail();
@@ -882,6 +908,30 @@ async function main() {
           // Ctrl+A → toggle auto-refresh
           state.detailAutoRefresh = !state.detailAutoRefresh;
           errorText.content = t`${state.detailAutoRefresh ? green("⟳ Auto-refresh ON (3s)") : dim("⟳ Auto-refresh OFF")}`;
+          renderDetail();
+        } else if (isCtrl && key.name === "u") {
+          // Ctrl+U → scroll up half page
+          const visibleLines = Math.min(H - 5, MAX_SCREEN_LINES);
+          const halfPage = Math.max(1, Math.floor(visibleLines / 2));
+          state.scrollOffset = Math.max(0, state.scrollOffset - halfPage);
+          renderDetail();
+        } else if (isCtrl && key.name === "d") {
+          // Ctrl+D → scroll down half page
+          const visibleLines = Math.min(H - 5, MAX_SCREEN_LINES);
+          const halfPage = Math.max(1, Math.floor(visibleLines / 2));
+          const maxScroll = Math.max(0, state.screenLines.length - visibleLines);
+          state.scrollOffset = Math.min(maxScroll, state.scrollOffset + halfPage);
+          renderDetail();
+        } else if (key.name === "pageup") {
+          // Page Up → scroll up full page
+          const visibleLines = Math.min(H - 5, MAX_SCREEN_LINES);
+          state.scrollOffset = Math.max(0, state.scrollOffset - visibleLines);
+          renderDetail();
+        } else if (key.name === "pagedown") {
+          // Page Down → scroll down full page
+          const visibleLines = Math.min(H - 5, MAX_SCREEN_LINES);
+          const maxScroll = Math.max(0, state.screenLines.length - visibleLines);
+          state.scrollOffset = Math.min(maxScroll, state.scrollOffset + visibleLines);
           renderDetail();
         } else if (isCtrl && key.name === "t") {
           // Ctrl+T → macros menu
@@ -926,6 +976,7 @@ async function main() {
             state.cursor--;
             state.inputBuffer = "";
             state.historyIndex = -1;
+            state.scrollOffset = -1; // follow bottom on new workspace
             state.lastDetailRefresh = Date.now();
             state.screenLines = await fetchScreen(state.filteredWorkspaces[state.cursor]!.ref);
             renderDetail();
@@ -936,6 +987,7 @@ async function main() {
             state.cursor++;
             state.inputBuffer = "";
             state.historyIndex = -1;
+            state.scrollOffset = -1; // follow bottom on new workspace
             state.lastDetailRefresh = Date.now();
             state.screenLines = await fetchScreen(state.filteredWorkspaces[state.cursor]!.ref);
             renderDetail();
@@ -1049,8 +1101,15 @@ async function main() {
       try {
         const ws = state.filteredWorkspaces[state.cursor];
         if (ws) {
+          // Check if user was at bottom before refresh
+          const visibleLines = Math.min(H - 5, MAX_SCREEN_LINES);
+          const wasAtBottom = state.scrollOffset >= Math.max(0, state.screenLines.length - visibleLines);
           state.screenLines = await fetchScreen(ws.ref);
           state.lastDetailRefresh = now;
+          // If user was at bottom (or following), keep following
+          if (wasAtBottom) {
+            state.scrollOffset = -1; // follow bottom
+          }
           renderDetail();
         }
       } catch {}
